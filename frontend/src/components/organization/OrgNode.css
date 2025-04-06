@@ -1,0 +1,208 @@
+.org-node {
+  padding: 12px;
+  border-radius: 8px;
+  border: 2px solid #c5cae9;
+  background-color: white;
+  width: 220px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.org-node.selected {
+  box-shadow: 0 0 0 2px #3f51b5, 0 4px 12px rgba(0, 0, 0, 0.2);
+  transform: scale(1.02);
+  z-index: 10;
+}
+
+.org-node.inactive {
+  background-color: #f5f5f5;
+  border-style: dashed;
+}
+
+/* Содержимое узла */
+.org-node-content {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Заголовок узла */
+.org-node-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+/* Аватар */
+.org-node-avatar {
+  position: relative;
+}
+
+.inactive-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.inactive-text {
+  color: white;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+/* Информация (имя, должность, отдел) */
+.org-node-info {
+  flex: 1;
+  overflow: hidden;
+}
+
+.org-node-name {
+  font-weight: 600;
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+
+.org-node-position {
+  color: #555;
+  margin-bottom: 2px;
+  line-height: 1.2;
+}
+
+.org-node-division {
+  color: #777;
+  font-size: 0.75rem;
+}
+
+/* Кнопка редактирования */
+.org-node-edit {
+  position: absolute;
+  top: 0;
+  right: 0;
+  opacity: 0.7;
+}
+
+.org-node-edit:hover {
+  opacity: 1;
+}
+
+/* Функциональные связи */
+.org-node-connections {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e0e0e0;
+}
+
+.connections-title {
+  display: block;
+  margin-bottom: 6px;
+  color: #666;
+  font-size: 0.75rem;
+}
+
+.connections-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.connection-chip {
+  height: 20px !important;
+  font-size: 0.65rem !important;
+}
+
+.connection-chip.functional {
+  background-color: #e3f2fd;
+  color: #2196f3;
+}
+
+.connection-chip.administrative {
+  background-color: #e8f5e9;
+  color: #4caf50;
+}
+
+.connection-chip.project {
+  background-color: #fff3e0;
+  color: #ff9800;
+}
+
+.connection-chip.territorial {
+  background-color: #f3e5f5;
+  color: #9c27b0;
+}
+
+.connection-chip.mentoring {
+  background-color: #e1f5fe;
+  color: #03a9f4;
+}
+
+/* Стили для ручек соединений */
+.org-node-handle {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  z-index: 3;
+}
+
+.org-node-target {
+  top: -4px;
+  background-color: #3f51b5;
+}
+
+.org-node-source {
+  bottom: -4px;
+  background-color: #3f51b5;
+}
+
+/* Стили для различных типов соединений */
+.org-node-edge {
+  stroke-width: 2;
+}
+
+.org-node-edge.administrative {
+  stroke: #3f51b5;
+}
+
+.org-node-edge.functional {
+  stroke: #f50057;
+  stroke-dasharray: 5;
+  animation: flowAnimation 30s linear infinite;
+}
+
+@keyframes flowAnimation {
+  from {
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Стили для соединительных точек */
+.org-node .react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid white;
+}
+
+/* Стили для разных уровней иерархии */
+.org-node.level-1 {
+  border-width: 3px;
+}
+
+.org-node.level-2 {
+  border-width: 2px;
+}
+
+.org-node.level-3 {
+  border-width: 1px;
+} 

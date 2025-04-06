@@ -1,0 +1,38 @@
+.functional-relations-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  max-width: 100%;
+  height: calc(100vh - 64px);
+  overflow: hidden;
+}
+
+.page-header {
+  padding: 16px 24px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.page-content {
+  flex: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Адаптивные стили */
+@media (max-width: 768px) {
+  .functional-relations-page {
+    padding: 16px;
+    height: auto;
+    min-height: calc(100vh - 64px);
+  }
+  
+  .page-header {
+    padding: 12px 16px;
+  }
+} 

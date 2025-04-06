@@ -1,0 +1,211 @@
+/* frontend/src/styles/dark-theme.css */
+
+/* Глобальные стили для темного режима */
+body {
+  background-color: #121215;
+  color: #ffffff;
+}
+
+/* Стили для скроллбаров - webkit */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(157, 106, 245, 0.5);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(157, 106, 245, 0.7);
+  box-shadow: 0 0 6px rgba(157, 106, 245, 0.5);
+}
+
+/* Стили для скроллбаров - Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(157, 106, 245, 0.5) rgba(0, 0, 0, 0.2);
+}
+
+/* Глобальные стили для карточек */
+.ant-card {
+  background-color: #1A1A20;
+  border-color: rgba(157, 106, 245, 0.2);
+}
+
+/* Стили для таблицы */
+.ant-table {
+  background-color: #1A1A20;
+  color: #ffffff;
+}
+
+.ant-table-thead > tr > th {
+  background-color: #222228 !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(157, 106, 245, 0.2) !important;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background-color: rgba(157, 106, 245, 0.05) !important;
+}
+
+/* Стили для кнопок */
+.ant-btn-primary {
+  background-color: #9D6AF5;
+  border-color: #9D6AF5;
+}
+
+.ant-btn-primary:hover {
+  background-color: #b28aff;
+  border-color: #b28aff;
+}
+
+/* Стили для модальных окон */
+.ant-modal-content {
+  background-color: #1A1A20;
+  border: 1px solid rgba(157, 106, 245, 0.2);
+}
+
+.ant-modal-header {
+  background-color: #1A1A20;
+  border-bottom: 1px solid rgba(157, 106, 245, 0.2);
+}
+
+.ant-modal-title {
+  color: #ffffff;
+}
+
+.ant-modal-close-x {
+  color: #ffffff;
+}
+
+/* Стили для форм */
+.ant-form-item-label > label {
+  color: #ffffff;
+}
+
+.ant-input,
+.ant-input-password,
+.ant-select-selector {
+  background-color: #222228 !important;
+  border-color: rgba(157, 106, 245, 0.2) !important;
+  color: #ffffff !important;
+}
+
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-password:focus,
+.ant-select-focused .ant-select-selector {
+  border-color: #9D6AF5 !important;
+  box-shadow: 0 0 0 2px rgba(157, 106, 245, 0.2) !important;
+}
+
+/* Пагинация */
+.ant-pagination-item {
+  background-color: #222228;
+  border-color: rgba(157, 106, 245, 0.2);
+}
+
+.ant-pagination-item a {
+  color: #ffffff;
+}
+
+.ant-pagination-item-active {
+  border-color: #9D6AF5;
+}
+
+.ant-pagination-item-active a {
+  color: #9D6AF5;
+}
+
+/* Другие настройки */
+.ant-typography {
+  color: #ffffff;
+}
+
+.ant-divider {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.ant-space {
+  color: inherit;
+}
+
+/* Стили для карточек с градиентным фоном */
+.crypto-card {
+  background: #222228;
+  border: 1px solid rgba(157, 106, 245, 0.2);
+  border-radius: 16px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  position: relative;
+}
+
+.crypto-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(157, 106, 245, 0.1) 0%, rgba(157, 106, 245, 0.03) 100%);
+  pointer-events: none;
+}
+
+/* Градиентные кнопки */
+.gradient-button {
+  background: linear-gradient(135deg, #9D6AF5 0%, #b28aff 100%);
+  border: none;
+  color: white;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 10px rgba(157, 106, 245, 0.5);
+  transition: all 0.3s ease;
+}
+
+.gradient-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(157, 106, 245, 0.7);
+}
+
+/* Графики с неоновым эффектом */
+.neon-chart {
+  position: relative;
+}
+
+.neon-chart path {
+  stroke: #9D6AF5;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 4px rgba(157, 106, 245, 0.7));
+}
+
+.neon-chart .ant-chart-line-area {
+  fill: url(#purple-gradient);
+  opacity: 0.2;
+}
+
+/* Неоновый текст */
+.neon-text {
+  color: #9D6AF5;
+  text-shadow: 0 0 10px rgba(157, 106, 245, 0.7);
+}
+
+.crypto-logo {
+  filter: drop-shadow(0 0 8px rgba(157, 106, 245, 0.7));
+  transition: all 0.3s ease;
+}
+
+.crypto-logo:hover {
+  transform: scale(1.05);
+  filter: drop-shadow(0 0 12px rgba(157, 106, 245, 0.9));
+} 

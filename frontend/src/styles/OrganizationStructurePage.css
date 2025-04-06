@@ -1,0 +1,273 @@
+.structure-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #f5f7fa;
+}
+
+/* Шапка */
+.structure-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background-color: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+}
+
+.logo-container img {
+  height: 40px;
+  margin-right: 15px;
+}
+
+.logo-container h1 {
+  font-size: 1.5rem;
+  color: #333;
+  margin: 0;
+}
+
+.structure-nav ul {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.structure-nav li {
+  margin: 0 10px;
+  position: relative;
+}
+
+.structure-nav li.active::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background-color: #ff5500;
+}
+
+.structure-nav a {
+  color: #444;
+  text-decoration: none;
+  font-weight: 500;
+  padding: 5px 0;
+  transition: color 0.3s ease;
+}
+
+.structure-nav a:hover {
+  color: #ff5500;
+}
+
+/* Основной контент */
+.structure-content {
+  display: flex;
+  flex: 1;
+  padding: 20px;
+  gap: 20px;
+}
+
+/* Боковая панель */
+.structure-sidebar {
+  width: 250px;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sidebar-header h3 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.organization-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.organization-list li {
+  padding: 10px 15px;
+  border-radius: 6px;
+  margin-bottom: 5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.organization-list li:hover {
+  background-color: #f0f0f0;
+}
+
+.organization-list li.active {
+  background-color: #f7f0ff;
+  color: #6200ea;
+  font-weight: 500;
+  box-shadow: 0 0 0 1px #d4c2ff;
+}
+
+.view-controls, .export-controls {
+  margin-top: 15px;
+}
+
+.view-controls h3, .export-controls h3 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.view-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.view-buttons button, .export-button {
+  padding: 8px 12px;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  color: #444;
+}
+
+.view-buttons button:hover, .export-button:hover {
+  background-color: #f5f5f5;
+  border-color: #ccc;
+}
+
+.view-buttons button.active {
+  background-color: #0056a8;
+  color: white;
+  border-color: #0056a8;
+}
+
+.export-button {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+/* Визуализация структуры */
+.structure-visualization {
+  flex: 1;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.select-organization, .list-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 20px;
+  text-align: center;
+  color: #666;
+}
+
+.select-organization h2, .list-view h2 {
+  color: #333;
+  margin-bottom: 15px;
+}
+
+/* Подвал */
+.structure-footer {
+  background-color: #fff;
+  padding: 15px 20px;
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+  border-top: 1px solid #eee;
+}
+
+.edit-mode-control {
+  margin-top: 15px;
+}
+
+.edit-mode-control h3 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+/* Переключатель (toggle switch) */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+  margin-right: 10px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: .4s;
+}
+
+input:checked + .slider {
+  background-color: #ff5500;
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px #ff5500;
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+.slider.round {
+  border-radius: 24px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
+.mode-label {
+  vertical-align: middle;
+  color: #555;
+  font-size: 14px;
+  font-weight: 500;
+} 

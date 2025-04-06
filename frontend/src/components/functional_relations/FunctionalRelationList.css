@@ -1,0 +1,143 @@
+.functional-relation-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  height: 100%;
+}
+
+.functional-relation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.functional-relation-filter-panel {
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.filter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.functional-relation-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.functional-relation-table {
+  flex: 1;
+  overflow: auto;
+  min-height: 400px;
+  position: relative;
+}
+
+.loading-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  background-color: rgba(255, 255, 255, 0.8);
+}
+
+.empty-data {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 300px;
+  gap: 16px;
+  color: #666;
+}
+
+/* Стили для Ant Design компонентов */
+.functional-relation-container .ant-tag {
+  margin: 0;
+  font-weight: 500;
+}
+
+.functional-relation-container .ant-alert {
+  margin-bottom: 16px;
+}
+
+.functional-relation-container .ant-table {
+  background-color: transparent;
+}
+
+.functional-relation-container .ant-table-wrapper {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.functional-relation-container .ant-table-thead > tr > th {
+  background-color: rgba(157, 106, 245, 0.15);
+  color: #fff;
+  border-bottom: 1px solid rgba(157, 106, 245, 0.2);
+}
+
+.functional-relation-container .ant-table-tbody > tr > td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.functional-relation-container .ant-table-tbody > tr:hover > td {
+  background-color: rgba(157, 106, 245, 0.1);
+}
+
+.functional-relation-container .ant-empty {
+  margin: 64px 0;
+}
+
+.functional-relation-container .ant-spin-container {
+  min-height: 300px;
+}
+
+.functional-relation-container .ant-select-focused .ant-select-selector {
+  border-color: #9D6AF5 !important;
+  box-shadow: 0 0 0 2px rgba(157, 106, 245, 0.2) !important;
+}
+
+/* Адаптивные стили */
+@media (max-width: 768px) {
+  .functional-relation-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  
+  .organization-select {
+    width: 100%;
+  }
+  
+  .filter-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filter-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .functional-relation-actions {
+    flex-direction: column;
+  }
+} 

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "d9e76112-9b2c-4632-8db2-d1c3a83f185d",
+    "name": "HAVAKA",
+    "position": "Директор",
+    "email": "Denisgovako@gmail.com",
+    "phone": "+79998887766",
+    "telegram_id": "@denisgovako",
+    "photo_id": "AgACAgIAAxkBAAM2Z-bNkm0dmvMs7RAWa5GweYcXzwkAAvntMRv0YDhL0mLsddW0t1QBAAMCAAN5AAM2BA",
+    "competencies": [
+      "DevOps"
+    ],
+    "created_at": "2025-03-28T23:30:47.577688",
+    "status": "pending"
+  }
+]

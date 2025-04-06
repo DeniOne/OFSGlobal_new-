@@ -1,0 +1,2 @@
+# Инициализация пакета db
+from app.db.base_class import Base  # noqa 
