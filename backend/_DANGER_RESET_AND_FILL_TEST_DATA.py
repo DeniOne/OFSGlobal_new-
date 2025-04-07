@@ -8,6 +8,7 @@ import logging
 import random
 import string
 from datetime import datetime, date, timedelta
+import json
 
 # Настройка логирования
 logging.basicConfig(
@@ -303,112 +304,107 @@ def create_staff(legal_entity_ids, position_ids, division_ids, location_ids):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    first_names = ["Иван", "Петр", "Алексей", "Сергей", "Дмитрий", "Михаил", "Андрей", "Николай", "Александр", "Владимир"]
-    last_names = ["Иванов", "Петров", "Сидоров", "Смирнов", "Кузнецов", "Попов", "Васильев", "Соколов", "Михайлов", "Новиков"]
+    first_names = ["Иван", "Петр", "Сергей", "Анна", "Мария", "Елена", "Дмитрий", "Алексей"]
+    last_names = ["Иванов", "Петров", "Сидоров", "Смирнова", "Кузнецова", "Попова", "Васильев", "Михайлов"]
+    middle_names = ["Иванович", "Петрович", "Сергеевич", "Дмитриевна", "Алексеевна", "Владимировна", None]
     
     staff_ids = []
-    used_emails = set()  # Для отслеживания уже использованных email адресов
-    
     for i in range(NUM_STAFF):
         first_name = random.choice(first_names)
         last_name = random.choice(last_names)
+        middle_name = random.choice(middle_names)
+        email = f"{first_name.lower()}.{last_name.lower()}{random.randint(1,99)}@ofs.test"
+        phone = f"+7 9{random.randint(10, 99)} {random.randint(100, 999)} {random.randint(10, 99)} {random.randint(10, 99)}"
+        is_active = random.choice([True, True, True, False])
+        organization_id = random.choice(legal_entity_ids) # Привязка к юр. лицу
+        primary_organization_id = organization_id # Пока считаем, что основное место = юр. лицо
+        location_id = random.choice(location_ids) # Случайная локация
+        telegram_id = f"@{first_name.lower()}_{last_name.lower()}{random.randint(1,10)}"
+        vk = f"https://vk.com/id{random.randint(10000, 99999)}"
+        instagram = f"@{first_name.lower()}{last_name.lower()}"
+        registration_address = f"г. Москва, ул. Регистрации, д. {random.randint(1, 50)}, кв. {random.randint(1, 200)}"
+        actual_address = random.choice([registration_address, f"г. Москва, ул. Фактическая, д. {random.randint(1, 100)}"])
+        description = f"Тестовый сотрудник {i+1}. {random.choice(['Ответственный', 'Исполнительный', 'Креативный', ''])}."
         
-        # Генерируем уникальный email с добавлением индекса и случайных символов
-        email_base = f"{first_name.lower()}.{last_name.lower()}"
-        email = f"{email_base}.{i+1}.{random_string(3).lower()}@example.com"
-        
-        # На всякий случай проверяем, что email уникальный
-        while email in used_emails:
-            email = f"{email_base}.{i+1}.{random_string(5).lower()}@example.com"
-        
-        used_emails.add(email)
-        
-        # Выбираем случайное юр.лицо
-        organization_id = random.choice(legal_entity_ids)
-        
-        cursor.execute(
-            """
-            INSERT INTO staff (
-                email, first_name, last_name, phone, description, is_active,
-                organization_id, primary_organization_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                email,
-                first_name,
-                last_name,
-                f"+7 9{random.randint(10, 99)} {random.randint(100, 999)}-{random.randint(10, 99)}-{random.randint(10, 99)}",
-                f"Тестовый сотрудник #{i+1}",
-                1,
-                organization_id,
-                organization_id  # Используем то же значение для primary_organization_id
-            )
-        )
-        staff_id = cursor.lastrowid
-        staff_ids.append(staff_id)
-        
-        # Создаем связь с должностью
-        position_id = random.choice(position_ids)
-        division_id = random.choice(division_ids)
-        location_id = random.choice(location_ids)
-        
-        cursor.execute(
-            """
-            INSERT INTO staff_positions (
-                staff_id, position_id, division_id, location_id, is_primary, is_active,
-                start_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                staff_id,
-                position_id,
-                division_id,
-                location_id,
-                1,
-                1,
-                random_date(date(2022, 1, 1)).isoformat()
-            )
-        )
-        
-        # Создаем связь с локацией
-        cursor.execute(
-            """
-            INSERT INTO staff_locations (
-                staff_id, location_id, is_current, date_from
-            ) VALUES (?, ?, ?, ?)
-            """,
-            (
-                staff_id,
-                location_id,
-                1,
-                random_date(date(2022, 1, 1)).isoformat()
-            )
-        )
-        
-        # Для некоторых сотрудников создаем дополнительные должности
-        if random.random() < 0.3:  # 30% шанс
-            # Выбираем другую должность
-            alt_position_id = random.choice([pos for pos in position_ids if pos != position_id])
-            alt_division_id = random.choice(division_ids)
-            
+        # --- ФЕЙКОВЫЕ ДАННЫЕ ДЛЯ ФАЙЛОВ ---
+        photo_path = random.choice([None, f"backend/uploads/staff/placeholder_avatar_{random.randint(1,3)}.png"]) # Фейковый путь
+        num_docs = random.randint(0, 3)
+        document_paths = []
+        if num_docs > 0:
+            for j in range(num_docs):
+                document_paths.append(f"backend/uploads/staff/placeholder_doc_{random.randint(1,5)}.pdf") # Фейковые пути
+        document_paths_json = json.dumps(document_paths)
+        # --- КОНЕЦ ФЕЙКОВЫХ ДАННЫХ ---
+
+        # Вставляем сотрудника со всеми новыми полями
+        try:
             cursor.execute(
                 """
-                INSERT INTO staff_positions (
-                    staff_id, position_id, division_id, location_id, is_primary, is_active,
-                    start_date
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO staff (
+                    email, first_name, last_name, middle_name, 
+                    phone, description, is_active, organization_id, 
+                    primary_organization_id, location_id, 
+                    registration_address, actual_address, 
+                    telegram_id, vk, instagram, 
+                    photo_path, document_paths
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    staff_id,
-                    alt_position_id,
-                    alt_division_id,
+                    email,
+                    first_name,
+                    last_name,
+                    middle_name,
+                    phone,
+                    description,
+                    1 if is_active else 0,
+                    organization_id,
+                    primary_organization_id,
                     location_id,
-                    0,  # не основная должность
-                    1,
-                    random_date(date(2022, 6, 1)).isoformat()
+                    registration_address,
+                    actual_address,
+                    telegram_id,
+                    vk,
+                    instagram,
+                    photo_path, # Вставляем путь к фото
+                    document_paths_json # Вставляем JSON с путями к документам
                 )
             )
-    
+            staff_ids.append(cursor.lastrowid)
+            
+            # Добавляем хотя бы одну связь с должностью для каждого сотрудника
+            staff_id = cursor.lastrowid
+            position_id = random.choice(position_ids)
+            division_id = random.choice(division_ids + [None]) # Может быть без подразделения
+            pos_location_id = random.choice(location_ids + [None]) # Должность может быть в другой локации
+            is_primary_pos = True
+            start_date_pos = random_date(end=date.today() - timedelta(days=30))
+            end_date_pos = random.choice([None, random_date(start=start_date_pos + timedelta(days=100))])
+            
+            cursor.execute(
+                 """
+                 INSERT INTO staff_positions (
+                     staff_id, position_id, division_id, location_id, is_primary, 
+                     is_active, start_date, end_date
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 """,
+                 (
+                     staff_id,
+                     position_id,
+                     division_id,
+                     pos_location_id,
+                     1 if is_primary_pos else 0,
+                     1 if end_date_pos is None else 0, # Активна, если нет даты окончания
+                     start_date_pos.isoformat(),
+                     end_date_pos.isoformat() if end_date_pos else None
+                 )
+            )
+            
+        except sqlite3.IntegrityError as e:
+            logger.warning(f"Ошибка при создании сотрудника {email} или его должности: {str(e)}")
+            # Пропускаем этого сотрудника, если произошла ошибка
+            conn.rollback() # Откатываем транзакцию для этого сотрудника
+            continue # Переходим к следующему
+            
     conn.commit()
     conn.close()
     

@@ -1,0 +1,59 @@
+/* ======================================== */
+/* Neomorphism Dark Theme - Базовые стили */
+/* ======================================== */
+
+:root {
+  /* -- Base Colors -- */
+  --neo-dark-bg: #1A1A20; /* Основной фон страницы */
+  --neo-text-color: rgba(255, 255, 255, 0.8);
+  --neo-text-color-light: #ffffff;
+
+  /* -- Default Button Colors -- */
+  --neo-default-bg: #2a2a30;
+  --neo-default-bg-hover: #333338;
+  --neo-default-bg-active: #25252a;
+
+  /* -- Primary Button Colors -- */
+  --neo-primary-bg: #9D6AF5;
+  --neo-primary-bg-hover: #ad7ff7;
+  --neo-primary-bg-active: #8e5cdb;
+
+  /* -- Danger Button Colors -- */
+  --neo-danger-bg: #f5222d;
+  --neo-danger-bg-hover: #ff4d4f; /* Примерно светлее */
+  --neo-danger-bg-active: #d91a2a; /* Примерно темнее */
+
+  /* -- Shadows & Style -- */
+  --neo-border-radius: 6px;
+  --neo-transition-speed: 0.2s;
+}
+
+/* Базовый стиль для всех неоморфных кнопок */
+.btn-neo {
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: var(--neo-border-radius);
+  cursor: pointer;
+  user-select: none;
+  text-align: center;
+  display: inline-block;
+  vertical-align: middle;
+  transition:
+    background-color var(--neo-transition-speed) ease-in-out,
+    box-shadow var(--neo-transition-speed) ease-in-out,
+    color var(--neo-transition-speed) ease-in-out;
+}
+
+/* Стили иконок в кнопках */
+.neo-button-icon {
+  margin-right: 8px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Стили для отключенных кнопок */
+.btn-neo.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+} 

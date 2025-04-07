@@ -47,6 +47,9 @@ import {
 } from '@ant-design/icons';
 import api, { checkApiHealth, delay } from '../services/api';
 import { maskPhoneNumber } from '../utils/formatters'; // Добавляем импорт функции маскирования телефона
+// Импортируем наш неоморфный компонент кнопки
+import NeoButton from '../components/ui/NeoButton';
+import { CultNeumorphButton } from '../components/ui/CultNeumorphButton'; // <-- Добавляем импорт
 // Убираем import { API_URL } from '../config'; - он не используется напрямую
 // Убираем import { Link } from 'react-router-dom'; - не используется
 import type { ColumnsType } from 'antd/lib/table';
@@ -225,9 +228,9 @@ const AdminStaffPage: React.FC = () => {
 
       const loadLocations = async () => {
         try {
-          console.log('[LOG:Staff] Запрос GET /locations');
-          const locationsResponse = await api.get('/locations');
-          console.log('[LOG:Staff] Получен ответ от /locations');
+          console.log('[LOG:Staff] Запрос GET /organizations?org_type=location');
+          const locationsResponse = await api.get('/organizations?org_type=location'); // <-- Исправленный запрос
+          console.log('[LOG:Staff] Получен ответ от /organizations для локаций');
           if (Array.isArray(locationsResponse.data)) {
             console.log(`[LOG:Staff] Загружено ${locationsResponse.data.length} локаций`);
             setLocations(locationsResponse.data);
@@ -1318,26 +1321,40 @@ const AdminStaffPage: React.FC = () => {
       <Title level={3}>Сотрудники компании</Title>
       
       <Space style={{ marginBottom: 16 }}>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />} 
+        <CultNeumorphButton 
+          intent="primary"
           onClick={() => handleOpenModal()} 
+          className="action-button add-button"
           disabled={!apiStatus.connected}
+          size="medium" // Укажем размер явно, т.к. он по умолчанию medium
         >
+          <PlusOutlined style={{ marginRight: '8px' }} /> {/* Иконка как children */}
           Добавить сотрудника
-        </Button>
-        <Button icon={<ReloadOutlined />} onClick={fetchData} loading={tableLoading} disabled={!apiStatus.connected}>
+        </CultNeumorphButton>
+        <CultNeumorphButton
+          intent="default" // Используем intent="default"
+          onClick={fetchData}
+          loading={tableLoading}
+          className="action-button refresh-button"
+          disabled={!apiStatus.connected}
+          size="medium"
+        >
+          <ReloadOutlined style={{ marginRight: '8px' }} /> {/* Иконка как children */}
           Обновить
-        </Button>
-        <Button 
-          icon={apiStatus.connected ? <ApiOutlined /> : <DisconnectOutlined />} 
+        </CultNeumorphButton>
+        <CultNeumorphButton
+          intent={apiStatus.connected ? "default" : "danger"} // Меняем intent
           onClick={checkConnection} 
           loading={apiStatus.checking}
-          danger={!apiStatus.connected}
-          type={apiStatus.connected ? "dashed" : "primary"}
+          className={!apiStatus.connected ? "danger-connection-button" : ""}
+          size="medium"
         >
+          {apiStatus.connected 
+            ? <ApiOutlined style={{ marginRight: '8px' }} /> 
+            : <DisconnectOutlined style={{ marginRight: '8px' }} /> 
+          } {/* Иконка как children */}
           {apiStatus.connected ? 'Проверить связь' : 'Переподключиться'}
-        </Button>
+        </CultNeumorphButton>
       </Space>
       
       {!apiStatus.connected && (
@@ -1348,9 +1365,9 @@ const AdminStaffPage: React.FC = () => {
           showIcon
           style={{ marginBottom: 16 }}
           action={
-            <Button size="small" danger onClick={checkConnection} loading={apiStatus.checking}>
+            <CultNeumorphButton intent="danger" size="small" onClick={checkConnection} loading={apiStatus.checking}>
               Повторить
-            </Button>
+            </CultNeumorphButton>
           }
         />
       )}
@@ -1395,9 +1412,10 @@ const AdminStaffPage: React.FC = () => {
             title="Нет данных для отображения"
             subTitle={tableLoading ? "Загрузка..." : "Не удалось загрузить список сотрудников. Попробуйте обновить страницу."}
             extra={
-              <Button type="primary" onClick={fetchData} loading={tableLoading}>
+              <CultNeumorphButton intent="primary" onClick={fetchData} loading={tableLoading}>
+                 <ReloadOutlined style={{ marginRight: '8px' }} /> {/* Иконка как children */}
                 Обновить данные
-              </Button>
+              </CultNeumorphButton>
             }
           />
         )}
@@ -1413,17 +1431,17 @@ const AdminStaffPage: React.FC = () => {
           form.resetFields(); // Сбрасываем форму при закрытии
         }}
         footer={[
-          <Button key="cancel" onClick={() => setIsModalVisible(false)}>
+          <CultNeumorphButton key="cancel" intent="secondary" onClick={() => setIsModalVisible(false)}>
             Отмена
-          </Button>,
-          <Button 
+          </CultNeumorphButton>,
+          <CultNeumorphButton 
             key="submit" 
-            type="primary" 
+            intent="primary" 
             loading={modalLoading}
             onClick={handleSave}
           >
             {editingItem ? 'Сохранить' : 'Создать'}
-          </Button>,
+          </CultNeumorphButton>,
         ]}
         width={800}
         destroyOnClose={true}
@@ -1549,7 +1567,10 @@ const AdminStaffPage: React.FC = () => {
                               multiple
                               beforeUpload={() => false}
                             >
-                              <Button icon={<UploadOutlined />}>Загрузить документы</Button>
+                              <CultNeumorphButton intent="secondary">
+                                <UploadOutlined style={{ marginRight: '8px' }} />
+                                Загрузить документы
+                              </CultNeumorphButton>
                             </Upload>
                           </Form.Item>
                         </Col>
@@ -2025,17 +2046,17 @@ const AdminStaffPage: React.FC = () => {
             <div className="staff-detail-actions" style={{ marginTop: '24px' }}>
                {/* ... existing action buttons code ... */}
                <div className="staff-action-buttons">
-                 <Button 
-                   type="primary" 
-                   icon={<EditOutlined />} 
+                 <CultNeumorphButton 
+                   intent="primary" 
                    className="staff-button edit-button"
                    onClick={() => {
                      handleOpenModal(selectedStaff);
                      setIsDetailModalVisible(false);
                    }}
                  >
+                   <EditOutlined style={{ marginRight: '8px' }} />
                    Редактировать
-                 </Button>
+                 </CultNeumorphButton>
                  
                  <Popconfirm
                    title="Удалить сотрудника?"
@@ -2057,17 +2078,18 @@ const AdminStaffPage: React.FC = () => {
                    cancelText="Отмена"
                    okButtonProps={{ danger: true }}
                  >
-                   <Button danger icon={<DeleteOutlined />} className="staff-button delete-button">
+                   <CultNeumorphButton intent="danger" className="staff-button delete-button">
+                     <DeleteOutlined style={{ marginRight: '8px' }} />
                      Удалить
-                   </Button>
+                   </CultNeumorphButton>
                  </Popconfirm>
                </div>
                
                <div className="staff-action-secondary">
-                 <Button className="staff-button message-button">Отправить сообщение</Button>
-                 <Button className="staff-button comment-button">Добавить комментарий</Button>
-                 <Button className="staff-button history-button">Просмотреть историю</Button>
-                 <Button onClick={() => setIsDetailModalVisible(false)} className="staff-button close-button">Закрыть</Button>
+                 <CultNeumorphButton intent="secondary" className="staff-button message-button">Отправить сообщение</CultNeumorphButton>
+                 <CultNeumorphButton intent="secondary" className="staff-button comment-button">Добавить комментарий</CultNeumorphButton>
+                 <CultNeumorphButton intent="secondary" className="staff-button history-button">Просмотреть историю</CultNeumorphButton>
+                 <CultNeumorphButton intent="secondary" onClick={() => setIsDetailModalVisible(false)} className="staff-button close-button">Закрыть</CultNeumorphButton>
                </div>
              </div>
           </div>
@@ -2142,20 +2164,20 @@ const AdminStaffPage: React.FC = () => {
             </Select>
           </Col>
           <Col xs={24} sm={8} md={4}>
-            <Button 
+            <NeoButton 
               icon={<ReloadOutlined />} 
               onClick={resetFilters}
               style={{ marginRight: 8 }}
             >
               Сбросить
-            </Button>
-            <Button 
-              type="primary" 
+            </NeoButton>
+            <NeoButton 
+              buttonType="primary" 
               icon={<SearchOutlined />} 
               onClick={() => fetchData()}
             >
               Обновить
-            </Button>
+            </NeoButton>
           </Col>
         </Row>
       </div>

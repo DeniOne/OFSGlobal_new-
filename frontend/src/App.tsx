@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import './styles/App.css';
+import { App as AntApp } from 'antd';
 
 import MainLayout from './components/layout/MainLayout';
 import LandingPage from './pages/LandingPage';
@@ -24,10 +25,15 @@ import AdminOrganizationsPage from './pages/AdminOrganizationsPage';
 import AdminStaffPage from './pages/AdminStaffPage';
 import AdminDivisionsPage from './pages/AdminDivisionsPage';
 import AdminPositionsPage from './pages/AdminPositionsPage';
-import AdminFunctionalRelationsPage from './pages/AdminFunctionalRelationsPage';
+import AdminFunctionsPage from './pages/AdminFunctionsPage';
+import AdminSectionsPage from './pages/AdminSectionsPage';
 import FunctionsPage from './pages/FunctionsPage';
 import StructureChartPage from './pages/StructureChartPage';
 import DemoPage from './pages/DemoPage';
+
+// Новые страницы структуры
+import StructurePositionsPage from './pages/structure/StructurePositionsPage';
+import StructureFunctionsPage from './pages/structure/StructureFunctionsPage';
 
 // Placeholder компоненты для других страниц
 function Reports() { return <div>Reports Page</div>; }
@@ -55,7 +61,7 @@ function ModuleSettingsPage() {
 
 import { AuthProvider } from './hooks/useAuth';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -65,48 +71,37 @@ const App: React.FC = () => {
       <Route path="/demo" element={<DemoPage />} />
       
       <Route path="/" element={<MainLayout />}>
-        <Route index element={<Navigate to="/admin/organizations" replace />} />
+        <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-        <Route path="telegram-bot" element={<ProtectedRoute><TelegramBotPage /></ProtectedRoute>} />
-        <Route path="organization-structure">
-          <Route index element={<Navigate to="/organization-structure/business" replace />} />
-          <Route path="business" element={<ProtectedRoute><OrganizationStructurePage /></ProtectedRoute>} />
-          <Route path="legal" element={<ProtectedRoute><OrganizationStructurePage /></ProtectedRoute>} />
-          <Route path="territorial" element={<ProtectedRoute><OrganizationStructurePage /></ProtectedRoute>} />
+        <Route path="structure">
+          <Route index element={<Navigate to="/structure/chart" replace />} />
+          <Route path="chart" element={<ProtectedRoute><StructureChartPage /></ProtectedRoute>} />
+          <Route path="positions" element={<ProtectedRoute><StructurePositionsPage /></ProtectedRoute>} />
+          <Route path="functions" element={<ProtectedRoute><StructureFunctionsPage /></ProtectedRoute>} />
+          <Route path="divisions" element={<ProtectedRoute><div>Просмотр Подразделений</div></ProtectedRoute>} />
         </Route>
-        <Route path="functional-relations" element={<ProtectedRoute><FunctionalRelationsPage /></ProtectedRoute>} />
-        
-        {/* Новая структура роутов для администрирования */}
         <Route path="admin">
-          {/* Редирект с корневого пути admin на страницу организаций */}
           <Route index element={<Navigate to="/admin/organizations" replace />} />
           <Route path="organizations" element={<ProtectedRoute><AdminOrganizationsPage /></ProtectedRoute>} />
           <Route path="divisions" element={<ProtectedRoute><AdminDivisionsPage /></ProtectedRoute>} />
+          <Route path="sections" element={<ProtectedRoute><AdminSectionsPage /></ProtectedRoute>} />
           <Route path="positions" element={<ProtectedRoute><AdminPositionsPage /></ProtectedRoute>} />
           <Route path="staff-assignments" element={<ProtectedRoute><AdminStaffPage /></ProtectedRoute>} />
-          <Route path="functional-relations" element={<ProtectedRoute><AdminFunctionalRelationsPage /></ProtectedRoute>} />
+          <Route path="functions" element={<ProtectedRoute><AdminFunctionsPage /></ProtectedRoute>} />
         </Route>
-        
-        {/* Старый роут - оставляем для обратной совместимости, но редиректим на новую страницу */}
-        <Route path="admin-database" element={<Navigate to="/admin/organizations" replace />} />
-        
-        <Route path="profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-        <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-        <Route path="staff">
-          <Route index element={<ProtectedRoute><StaffList /></ProtectedRoute>} />
-          <Route path="new" element={<ProtectedRoute><StaffForm /></ProtectedRoute>} />
-          <Route path=":id" element={<ProtectedRoute><StaffForm /></ProtectedRoute>} />
-          <Route path="profiles" element={<ProtectedRoute><StaffList /></ProtectedRoute>} />
-          <Route path="competencies" element={<ProtectedRoute><div>Компетенции сотрудников</div></ProtectedRoute>} />
-          <Route path="training" element={<ProtectedRoute><div>Обучение сотрудников</div></ProtectedRoute>} />
-          <Route path="achievements" element={<ProtectedRoute><div>Достижения сотрудников</div></ProtectedRoute>} />
-        </Route>
-        <Route path="reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-        <Route path="divisions" element={<ProtectedRoute><DivisionsPage /></ProtectedRoute>} />
-        <Route path="positions" element={<ProtectedRoute><PositionsPage /></ProtectedRoute>} />
+        <Route path="my-settings" element={<ProtectedRoute><MySettingsPage /></ProtectedRoute>} />
+        <Route path="settings" element={<ProtectedRoute><ModuleSettingsPage /></ProtectedRoute>} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <AntApp>
+      <AppContent />
+    </AntApp>
   );
 };
 

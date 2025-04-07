@@ -248,7 +248,6 @@ CREATE TABLE IF NOT EXISTS staff (
     last_name TEXT NOT NULL,
     middle_name TEXT,
     phone TEXT,
-    position TEXT,
     description TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
     organization_id INTEGER,
@@ -259,13 +258,13 @@ CREATE TABLE IF NOT EXISTS staff (
     telegram_id TEXT,
     vk TEXT,
     instagram TEXT,
-    extra_int2 INTEGER,
-    extra_date1 DATE,
+    photo_path TEXT,
+    document_paths TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (organization_id) REFERENCES organizations(id),
-    FOREIGN KEY (primary_organization_id) REFERENCES organizations(id),
-    FOREIGN KEY (location_id) REFERENCES organizations(id)
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
+    FOREIGN KEY (primary_organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
+    FOREIGN KEY (location_id) REFERENCES organizations(id) ON DELETE SET NULL
 );
 
 -- Триггер для автоматического обновления даты изменения

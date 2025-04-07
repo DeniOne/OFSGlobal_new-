@@ -15,6 +15,7 @@ import './styles/dark-theme.css';
 import './styles/global.css';
 // Импорт радикального решения для удаления всех фантомов
 import './styles/table-fix.css';
+import './styles/neomorphism.css'; // Импорт стилей неоморфизма
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

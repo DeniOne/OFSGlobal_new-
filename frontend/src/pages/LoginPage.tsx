@@ -99,16 +99,12 @@ const LoginPage: React.FC = () => {
 
           <Form.Item>
             <Button 
-              type="primary" 
+              type="primary"
               htmlType="submit" 
               loading={loading} 
               block
               size="large"
-              style={{
-                background: 'linear-gradient(45deg, #9D6AF5 30%, #7B4FE9 90%)',
-                border: 'none',
-                boxShadow: '0 3px 5px 2px rgba(157, 106, 245, .3)',
-              }}
+              className="btn-neo primary"
             >
               Войти
             </Button>

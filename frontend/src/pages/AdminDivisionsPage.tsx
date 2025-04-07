@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Button,
   Table,
   Space,
   Modal,
@@ -8,9 +7,12 @@ import {
   Input,
   Select,
   Spin,
-  message,
   Switch,
-  Typography
+  Typography,
+  Popconfirm,
+  App, 
+  Card,
+  Button as AntButton
 } from 'antd';
 import {
   EditOutlined,
@@ -19,40 +21,42 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 import api from '../services/api';
+import { CultNeumorphButton } from '../components/ui/CultNeumorphButton';
+import type { ColumnsType } from 'antd/es/table';
+import type { Organization as OrgType } from '../types/organization'; // Импортируем тип организации
 
 const { Title } = Typography;
+const { TextArea } = Input;
 const { Option } = Select;
 
-// Типы данных
+// Интерфейс для Подразделения
 interface Division {
   id: number;
   name: string;
   code: string;
-  organization_id?: number;
-  parent_id?: number;
+  description?: string;
   is_active: boolean;
+  organization_id: number; 
+  parent_id?: number | null;
+  ckp?: string;
   created_at: string;
   updated_at: string;
 }
 
-interface Organization {
-  id: number;
-  name: string;
-}
-
-// !!! ВАЖНО: Переименовать компонент вручную в DivisionsPage !!!
 const AdminDivisionsPage: React.FC = () => {
+  const { message } = App.useApp();
   const [tableLoading, setTableLoading] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
   const [divisions, setDivisions] = useState<Division[]>([]);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [organizations, setOrganizations] = useState<OrgType[]>([]); // Для выбора организации
+  const [parentDivisions, setParentDivisions] = useState<Division[]>([]); // Для выбора родительского подразделения
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<Division | null>(null);
 
   const [form] = Form.useForm();
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Загрузка данных
+  // Загрузка данных (Подразделения и Организации)
   const fetchData = useCallback(async () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -61,29 +65,64 @@ const AdminDivisionsPage: React.FC = () => {
     const signal = abortControllerRef.current.signal;
 
     setTableLoading(true);
+    message.destroy(); 
+    
     try {
-      const [divisionsResponse, orgResponse] = await Promise.all([
+      // Используем Promise.allSettled для параллельной загрузки
+      const [divisionsResponse, orgResponse] = await Promise.allSettled([
         api.get('/divisions/', { signal }),
-        api.get('/organizations/', { signal })
+        api.get('/organizations?org_type=holding', { signal }) // Загружаем только холдинги для привязки
       ]);
+
+      // Обработка подразделений
+      if (divisionsResponse.status === 'fulfilled') {
+        if (!signal.aborted) {
+           setDivisions(divisionsResponse.value.data);
+           setParentDivisions(divisionsResponse.value.data); // Используем тот же список для выбора родителя
+        }
+      } else {
+        if (!signal.aborted) {
+          if (divisionsResponse.reason && divisionsResponse.reason.name !== 'AbortError') {
+            console.error("[AdminDivisionsPage] Ошибка при загрузке подразделений:", divisionsResponse.reason);
+            message.error('Не удалось загрузить список подразделений.');
+          }
+          setDivisions([]);
+          setParentDivisions([]);
+        }
+      }
       
-      setDivisions(divisionsResponse.data);
-      setOrganizations(orgResponse.data);
+      // Обработка организаций (холдингов)
+      if (orgResponse.status === 'fulfilled') {
+         if (!signal.aborted) {
+            setOrganizations(orgResponse.value.data);
+         }
+      } else {
+          if (!signal.aborted) {
+             if (orgResponse.reason && orgResponse.reason.name !== 'AbortError') {
+                console.warn("[AdminDivisionsPage] Ошибка при загрузке организаций (холдингов):", orgResponse.reason);
+                message.warning('Не удалось загрузить список организаций для выбора.');
+             }
+            setOrganizations([]);
+          }
+      }
 
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log('[LOG:Divisions] Fetch aborted');
-        return;
-      }
-      console.error('[LOG:Divisions] Ошибка при загрузке данных:', error);
-      message.error('Ошибка при загрузке данных для подразделений.');
+       if (error.name === 'AbortError') {
+         console.log('[AdminDivisionsPage] Fetch aborted by cleanup');
+         return; 
+       }
+       console.error('[AdminDivisionsPage] Непредвиденная ошибка при загрузке данных:', error);
+       message.error('Произошла непредвиденная ошибка при загрузке данных.');
+       setDivisions([]);
+       setOrganizations([]);
+       setParentDivisions([]);
     } finally {
        if (!signal.aborted) {
           setTableLoading(false);
           abortControllerRef.current = null;
       }
     }
-  }, []);
+  }, [message]);
 
   useEffect(() => {
     fetchData();
@@ -97,13 +136,19 @@ const AdminDivisionsPage: React.FC = () => {
     setEditingItem(null);
     form.resetFields();
     form.setFieldsValue({ is_active: true }); 
+    // Устанавливаем первую организацию по умолчанию, если они есть
+    if (organizations.length > 0) {
+      form.setFieldsValue({ organization_id: organizations[0].id });
+    }
     setIsModalVisible(true);
   };
 
   // Открытие модалки для редактирования
   const handleEdit = (record: Division) => {
     setEditingItem(record);
-    form.setFieldsValue(record);
+    // Преобразуем null в undefined для Select
+    const formData = { ...record, parent_id: record.parent_id === null ? undefined : record.parent_id };
+    form.setFieldsValue(formData);
     setIsModalVisible(true);
   };
 
@@ -113,12 +158,11 @@ const AdminDivisionsPage: React.FC = () => {
       const values = await form.validateFields();
       setModalLoading(true);
       
-      const dataToSend = { ...values };
-       // Убедимся, что parent_id отправляется как null, если не выбрано
-      if (dataToSend.parent_id === undefined || dataToSend.parent_id === '') {
-          dataToSend.parent_id = null;
-      }
-      console.log('[LOG:Divisions] Данные для отправки:', dataToSend);
+      // Убедимся, что parent_id отправляется как null, если не выбран
+      const dataToSend = { 
+          ...values, 
+          parent_id: values.parent_id === undefined ? null : values.parent_id 
+      };
 
       if (editingItem) {
         await api.put(`/divisions/${editingItem.id}`, dataToSend);
@@ -129,21 +173,14 @@ const AdminDivisionsPage: React.FC = () => {
       }
       setIsModalVisible(false);
       setEditingItem(null);
-      fetchData();
+      fetchData(); // Обновляем таблицу
     } catch (error: any) {
-      console.error('[LOG:Divisions] Ошибка при сохранении:', error);
-      let errorMessage = 'Ошибка при сохранении';
-        if (error.response?.data?.detail) {
-             if (Array.isArray(error.response.data.detail)) {
-                errorMessage = error.response.data.detail
-                    .map((e: any) => `${e.loc.length > 1 ? e.loc[1] : 'field'}: ${e.msg}`)
-                    .join('; ');
-            } else if (typeof error.response.data.detail === 'string') {
-                errorMessage = error.response.data.detail;
-            }
-        } else if (error.message) {
-             errorMessage = error.message;
-        }
+      console.error('[AdminDivisionsPage] Ошибка при сохранении подразделения:', error);
+      let errorMessage = 'Ошибка при сохранении подразделения';
+       // TODO: Добавить парсинг ошибок валидации с бэка
+      if (error.response?.data?.detail) {
+            errorMessage = error.response.data.detail;
+       }
       message.error(errorMessage);
     } finally {
       setModalLoading(false);
@@ -151,139 +188,167 @@ const AdminDivisionsPage: React.FC = () => {
   };
 
   // Логика удаления
-  const handleDelete = (id: number) => {
-    Modal.confirm({
-      title: 'Подтвердите удаление',
-      content: 'Вы уверены, что хотите удалить это подразделение? Это может затронуть связанные сущности.',
-      okText: 'Удалить',
-      okType: 'danger',
-      cancelText: 'Отмена',
-      onOk: async () => {
-        try {
-          setTableLoading(true);
-          await api.delete(`/divisions/${id}`);
-          message.success('Подразделение успешно удалено');
-          fetchData();
-        } catch (error) {
-          console.error('[LOG:Divisions] Ошибка при удалении:', error);
-          message.error('Ошибка при удалении подразделения.');
-          setTableLoading(false);
-        }
-      },
-    });
+  const handleDelete = async (id: number) => {
+     try {
+        setTableLoading(true);
+        await api.delete(`/divisions/${id}`);
+        message.success('Подразделение успешно удалено');
+        fetchData(); // Обновляем таблицу
+      } catch (error: any) {
+        console.error('[AdminDivisionsPage] Ошибка при удалении подразделения:', error);
+        let errorMessage = 'Ошибка при удалении подразделения.';
+        if (error.response?.data?.detail) {
+            errorMessage = error.response.data.detail;
+         }
+        message.error(errorMessage);
+        setTableLoading(false);
+      }
   };
 
   // Колонки для таблицы
-  const columns = [
-    { title: 'ID', dataIndex: 'id', key: 'id', sorter: (a: Division, b: Division) => a.id - b.id },
-    { title: 'Название', dataIndex: 'name', key: 'name', sorter: (a: Division, b: Division) => a.name.localeCompare(b.name) },
-    { title: 'Код', dataIndex: 'code', key: 'code' },
+  const columns: ColumnsType<Division> = [
+    { title: 'ID', dataIndex: 'id', key: 'id', sorter: (a, b) => a.id - b.id, width: 80 },
+    { title: 'Название', dataIndex: 'name', key: 'name', sorter: (a, b) => a.name.localeCompare(b.name) },
+    { title: 'Код', dataIndex: 'code', key: 'code', width: 150 },
     {
-      title: 'Организация',
-      dataIndex: 'organization_id',
-      key: 'organization',
-      render: (orgId?: number) => organizations.find(org => org.id === orgId)?.name || '—',
-      // TODO: Добавить фильтры по организации
+       title: 'Организация',
+       dataIndex: 'organization_id',
+       key: 'organization',
+       render: (orgId) => organizations.find(org => org.id === orgId)?.name || '-',
     },
     {
-      title: 'Родительское подр.',
-      dataIndex: 'parent_id',
-      key: 'parent',
-      render: (parentId?: number) => divisions.find(div => div.id === parentId)?.name || '—',
-       // TODO: Добавить фильтры по родителю
+       title: 'Родительское подр.',
+       dataIndex: 'parent_id',
+       key: 'parent',
+       render: (parentId) => parentDivisions.find(div => div.id === parentId)?.name || '-',
     },
+    { title: 'ЦКП', dataIndex: 'ckp', key: 'ckp', render: (text) => text || '-', width: 100 },
     {
       title: 'Активно',
       dataIndex: 'is_active',
-      key: 'isActive',
+      key: 'is_active',
       render: (isActive: boolean) => (isActive ? 'Да' : 'Нет'),
-      // TODO: Добавить фильтры по статусу
+      width: 100
     },
     {
       title: 'Действия',
       key: 'actions',
+      width: 120,
       render: (_: any, record: Division) => (
-        <Space size="middle">
-          <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} />
-          <Button icon={<DeleteOutlined />} danger onClick={() => handleDelete(record.id)} />
+        <Space size="small">
+          <CultNeumorphButton size="small" intent="secondary" onClick={() => handleEdit(record)}>
+            <EditOutlined />
+          </CultNeumorphButton>
+          <Popconfirm
+            title="Удалить подразделение?"
+            description={`Вы уверены? Это может затронуть дочерние элементы и связи.`}
+            onConfirm={() => handleDelete(record.id)}
+            okText="Да, удалить"
+            cancelText="Отмена"
+            okButtonProps={{ danger: true }}
+          >
+            <CultNeumorphButton size="small" intent="danger">
+              <DeleteOutlined />
+            </CultNeumorphButton>
+          </Popconfirm>
         </Space>
       ),
     },
   ];
 
-  // Опции для Select родительского подразделения (исключаем текущее редактируемое)
-  const parentDivisionOptions = divisions
-    .filter(div => !editingItem || div.id !== editingItem.id)
-    .map(div => (
-        <Option key={div.id} value={div.id}>{div.name}</Option>
-    ));
-
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
-      <Title level={2}>Подразделения</Title>
-      <Space style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
-          Добавить подразделение
-        </Button>
-        <Button icon={<ReloadOutlined />} onClick={fetchData} loading={tableLoading}>
-          Обновить
-        </Button>
-      </Space>
-      
-      <Spin spinning={tableLoading}>
-          <Table 
-              columns={columns} 
-              dataSource={divisions} 
-              rowKey="id" 
-              // pagination={{ pageSize: 10 }}
-          />
-      </Spin>
+      <Title level={2}>Управление подразделениями</Title>
+      <Card>
+        <Space style={{ marginBottom: 16 }}>
+          <CultNeumorphButton intent="primary" onClick={handleCreate}>
+            <PlusOutlined style={{ marginRight: '8px' }} />
+            Добавить подразделение
+          </CultNeumorphButton>
+          <CultNeumorphButton onClick={fetchData} loading={tableLoading}>
+            <ReloadOutlined style={{ marginRight: '8px' }} />
+            Обновить
+          </CultNeumorphButton>
+        </Space>
+        
+        <Table<Division>
+            columns={columns}
+            dataSource={divisions}
+            rowKey="id"
+            loading={tableLoading}
+            pagination={{ pageSize: 15 }}
+        />
+      </Card>
 
       {/* Модальное окно */}
       <Modal
         title={editingItem ? 'Редактировать подразделение' : 'Создать подразделение'}
-        visible={isModalVisible}
-        onOk={handleSave}
+        open={isModalVisible} 
         onCancel={() => setIsModalVisible(false)}
         confirmLoading={modalLoading}
-        destroyOnClose
+        footer={[
+          <CultNeumorphButton key="back" onClick={() => setIsModalVisible(false)}>
+              Отмена
+          </CultNeumorphButton>,
+          <CultNeumorphButton key="submit" intent="primary" loading={modalLoading} onClick={handleSave}>
+              {editingItem ? 'Сохранить' : 'Создать'}
+          </CultNeumorphButton>,
+        ]}
       >
         <Spin spinning={modalLoading}>
-          <Form form={form} layout="vertical" name="divisionForm">
+          <Form
+            form={form}
+            layout="vertical"
+            name="division_form"
+          >
             <Form.Item
               name="name"
-              label="Название"
-              rules={[{ required: true, message: 'Пожалуйста, введите название' }]}
+              label="Название подразделения"
+              rules={[{ required: true, message: 'Пожалуйста, введите название!' }]}
             >
               <Input />
             </Form.Item>
             <Form.Item
               name="code"
-              label="Код"
-              rules={[{ required: true, message: 'Пожалуйста, введите код' }]}
+              label="Код подразделения"
+              rules={[{ required: true, message: 'Пожалуйста, введите код!' }]}
             >
               <Input />
             </Form.Item>
             <Form.Item
               name="organization_id"
-              label="Организация"
-               rules={[{ required: true, message: 'Пожалуйста, выберите организацию' }]}
+              label="Организация (Холдинг)"
+              rules={[{ required: true, message: 'Пожалуйста, выберите организацию!' }]}
             >
-              <Select placeholder="Выберите организацию" loading={tableLoading} allowClear>
+              <Select placeholder="Выберите организацию">
                 {organizations.map(org => (
                   <Option key={org.id} value={org.id}>{org.name}</Option>
                 ))}
               </Select>
             </Form.Item>
-            <Form.Item
+             <Form.Item
               name="parent_id"
-              label="Родительское подразделение"
+              label="Родительское подразделение (опционально)"
             >
-              <Select placeholder="Нет родителя" loading={tableLoading} allowClear>
-                {/* Опция для отсутствия родителя */}
-                {/* <Option value={null}>Нет родителя</Option> */}
-                {parentDivisionOptions}
+              <Select placeholder="Корневое подразделение" allowClear>
+                {parentDivisions
+                   .filter(div => !editingItem || div.id !== editingItem.id) // Нельзя выбрать себя родителем
+                   .map(div => (
+                  <Option key={div.id} value={div.id}>{div.name}</Option>
+                ))}
               </Select>
+            </Form.Item>
+            <Form.Item
+              name="description"
+              label="Описание"
+            >
+              <TextArea rows={3} />
+            </Form.Item>
+            <Form.Item
+              name="ckp"
+              label="ЦКП (опционально)"
+            >
+              <Input placeholder="Ценный конечный продукт"/>
             </Form.Item>
             <Form.Item
               name="is_active"
@@ -299,5 +364,4 @@ const AdminDivisionsPage: React.FC = () => {
   );
 };
 
-// !!! ВАЖНО: Переименовать компонент вручную в DivisionsPage !!!
 export default AdminDivisionsPage; 

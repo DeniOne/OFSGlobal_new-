@@ -2,7 +2,7 @@ import sqlite3
 import os
 import traceback  # Добавляем модуль для печати стека вызовов
 import logging    # Добавляем логирование
-from fastapi import FastAPI, HTTPException, Depends, Request, APIRouter # <--- Добавляем APIRouter
+from fastapi import FastAPI, HTTPException, Depends, Request, APIRouter, File, UploadFile, Form # <--- Добавляем APIRouter, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware  # Импортируем CORS middleware
 from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional, Dict, Any, Union
@@ -11,6 +11,8 @@ import uvicorn
 from datetime import datetime, date, timedelta
 from complete_schema import ALL_SCHEMAS
 import json
+import shutil # <-- Добавляем импорт для работы с файлами
+from fastapi.staticfiles import StaticFiles # <-- Добавляем импорт
 
 # --- НОВЫЕ ИМПОРТЫ ДЛЯ АУТЕНТИФИКАЦИИ ---
 from passlib.context import CryptContext
@@ -47,18 +49,20 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Создаем приложение
 app = FastAPI(title="OFS Global API", description="Гибкое API для OFS Global", version="2.0.0")
 
-# --- СОЗДАЕМ РОУТЕР ДЛЯ АУТЕНТИФИКАЦИИ ---
-auth_router = APIRouter(tags=["Authentication"]) # Добавляем тег для группировки в Swagger
-# --- КОНЕЦ СОЗДАНИЯ РОУТЕРА ---
-
+# --- ПЕРЕМЕЩАЕМ CORS СЮДА, ЧТОБЫ ОН БЫЛ ПЕРВЫМ ---
 # Настройка CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Разрешаем все origins для разработки
+    allow_origins=["*"],  # <-- Возвращаем "*", чтобы разрешить все источники
     allow_credentials=True,
     allow_methods=["*"],  # Разрешаем все HTTP методы
     allow_headers=["*"],  # Разрешаем все заголовки
 )
+# --- КОНЕЦ ПЕРЕМЕЩЕНИЯ CORS ---
+
+# --- СОЗДАЕМ РОУТЕР ДЛЯ АУТЕНТИФИКАЦИИ ---
+auth_router = APIRouter(tags=["Authentication"]) # Добавляем тег для группировки в Swagger
+# --- КОНЕЦ СОЗДАНИЯ РОУТЕРА ---
 
 # Добавляем middleware для глобальной обработки ошибок
 @app.middleware("http")
@@ -281,6 +285,8 @@ class StaffBase(BaseModel):
     vk: Optional[str] = None  # Профиль ВКонтакте (сохраняется в extra_field2)
     instagram: Optional[str] = None  # Профиль Instagram (сохраняется в extra_field3)
     location_id: Optional[int] = None  # ID локации (физического местонахождения)
+    photo_path: Optional[str] = None  # Путь к файлу фотографии
+    document_paths: Optional[List[str]] = None # Список путей к документам (хранится как JSON)
 
 class StaffCreate(StaffBase):
     pass
@@ -546,6 +552,44 @@ def init_db():
         existing_tables = sorted([row[0] for row in cursor.fetchall()])
         logger.info(f"Существующие таблицы в БД: {', '.join(existing_tables)}")
             
+        # --- Таблица Сотрудники (staff) ---
+        # Добавляем photo_path и document_paths
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS staff (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            first_name TEXT NOT NULL,
+            last_name TEXT NOT NULL,
+            middle_name TEXT,
+            phone TEXT,
+            description TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            organization_id INTEGER, -- Связь с юр. лицом (НЕ ОБЯЗАТЕЛЬНО, может быть холдинг)
+            primary_organization_id INTEGER, -- Основное место работы (холдинг или юр. лицо)
+            location_id INTEGER, -- Местоположение сотрудника
+            photo_path TEXT, -- Путь к фото
+            document_paths TEXT, -- JSON строка со списком путей к документам
+            telegram_id TEXT,
+            vk TEXT,
+            instagram TEXT,
+            registration_address TEXT,
+            actual_address TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (organization_id) REFERENCES organizations (id) ON DELETE SET NULL,
+            FOREIGN KEY (primary_organization_id) REFERENCES organizations (id) ON DELETE SET NULL,
+            FOREIGN KEY (location_id) REFERENCES organizations (id) ON DELETE SET NULL -- Предполагаем, что location это тоже organization с типом LOCATION
+        )
+        """)
+        
+        conn.commit()
+        logger.info("Применение схем завершено.")
+        
+        # Проверяем, какие таблицы реально создались
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        existing_tables = sorted([row[0] for row in cursor.fetchall()])
+        logger.info(f"Существующие таблицы в БД: {', '.join(existing_tables)}")
+            
     except sqlite3.Error as e:
         logger.error(f"Критическая ошибка при подключении или инициализации базы данных: {str(e)}")
         if conn: # Откатываем, если было соединение
@@ -570,6 +614,7 @@ def init_db():
 @auth_router.post("/register", response_model=User)
 async def register_user(user_in: UserCreate, db: sqlite3.Connection = Depends(get_db)):
     """Регистрация нового пользователя."""
+    # ----- ВОЗВРАЩАЕМ ЛОГИКУ НА МЕСТО ----- 
     logger.info(f"Попытка регистрации пользователя: {user_in.email}")
     
     # Проверяем, не существует ли уже пользователь с таким email
@@ -595,8 +640,8 @@ async def register_user(user_in: UserCreate, db: sqlite3.Connection = Depends(ge
                 user_in.email,
                 hashed_password,
                 user_in.full_name,
-                user_in.is_active,
-                user_in.is_superuser,
+                user_in.is_active, # <-- Используем значение из UserCreate
+                user_in.is_superuser, # <-- Используем значение из UserCreate
             )
         )
         db.commit()
@@ -618,6 +663,7 @@ async def register_user(user_in: UserCreate, db: sqlite3.Connection = Depends(ge
             status_code=500,
             detail=f"Ошибка базы данных при регистрации: {str(e)}",
         )
+    # ----- КОНЕЦ ВОЗВРАЩЕНИЯ ЛОГИКИ -----
 
 @auth_router.post("/login/access-token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: sqlite3.Connection = Depends(get_db)):
@@ -1504,24 +1550,30 @@ def delete_position(position_id: int, db: sqlite3.Connection = Depends(get_db)):
 def read_staff(
     organization_id: Optional[int] = None,
     primary_organization_id: Optional[int] = None,
+    location_id: Optional[int] = None, # Добавляем фильтр по локации
     is_active: Optional[bool] = None,
-    db: sqlite3.Connection = Depends(get_db)
+    db: sqlite3.Connection = Depends(get_db),
+    skip: int = 0, 
+    limit: int = 100 
 ):
     """
     Получить список сотрудников с возможностью фильтрации.
+    ВЫБИРАЕМ ТОЛЬКО ПОЛЯ ИЗ ТАБЛИЦЫ staff, соответствующие модели Staff.
     """
-    # Выбираем все нужные поля, включая новые
+    # Убедимся, что в SELECT нет колонки 'position'
     query = """
-        SELECT id, email, first_name, last_name, middle_name, phone, 
-               position, description, is_active, organization_id, 
-               primary_organization_id, location_id, registration_address, 
-               actual_address, telegram_id, vk, instagram, 
-               created_at, updated_at 
-        FROM staff WHERE 1=1
+        SELECT 
+            id, email, first_name, last_name, middle_name, phone, 
+            description, is_active, organization_id, 
+            primary_organization_id, location_id, registration_address, 
+            actual_address, telegram_id, vk, instagram, 
+            created_at, updated_at, photo_path, document_paths
+        FROM staff 
+        WHERE 1=1
     """
     params = []
     
-    # ... (фильтры остаются как были)
+    # Фильтры
     if organization_id is not None:
         query += " AND organization_id = ?"
         params.append(organization_id)
@@ -1529,137 +1581,282 @@ def read_staff(
     if primary_organization_id is not None:
         query += " AND primary_organization_id = ?"
         params.append(primary_organization_id)
+
+    if location_id is not None: # Добавляем обработку фильтра локации
+        query += " AND location_id = ?"
+        params.append(location_id)
     
     if is_active is not None:
         query += " AND is_active = ?"
         params.append(1 if is_active else 0)
     
-    cursor = db.execute(query, params)
-    staff_list = cursor.fetchall()
+    # Пагинация и сортировка
+    query += " ORDER BY last_name, first_name LIMIT ? OFFSET ?"
+    params.extend([limit, skip])
     
-    logger.info(f"[read_staff] Найдено {len(staff_list)} записей в БД.") # Лог количества записей
+    logger.debug(f"Executing staff query (CORRECTED): {query} with params: {params}")
+    try:
+        cursor = db.execute(query, params)
+        rows = cursor.fetchall()
+    except sqlite3.Error as db_err:
+        logger.error(f"SQLite error executing staff query: {db_err}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Database error while fetching staff")
+
+    logger.info(f"Retrieved {len(rows)} staff rows from DB (simplified query)")
     
-    result = []
-    for i, s in enumerate(staff_list): # Добавляем индекс для логгирования
+    staff_list = []
+    for row_index, row in enumerate(rows):
+        row_dict = dict(row)
+        staff_id = row_dict.get('id', f'row_{row_index}') 
+        logger.debug(f"Processing staff row {staff_id}")
+        
+        # Обработка JSON для document_paths
+        doc_paths_json = row_dict.get('document_paths')
+        if doc_paths_json:
+            try:
+                row_dict['document_paths'] = json.loads(doc_paths_json)
+            except json.JSONDecodeError:
+                logger.warning(f"Could not decode document_paths JSON for staff ID {staff_id}: {doc_paths_json}")
+                row_dict['document_paths'] = [] 
+        else:
+             row_dict['document_paths'] = [] 
+
         try:
-            logger.debug(f"[read_staff] Обработка записи {i+1}/{len(staff_list)}: ID={s['id']}, Email={s['email']}") # Возвращаем доступ по ключу
-            # Логгируем ключи, чтобы убедиться что все колонки прочитаны
-            logger.debug(f"[read_staff] Ключи для записи ID={s['id']}: {list(s.keys()) if hasattr(s, 'keys') else 'N/A'}") 
+            # ----- НОВОЕ: Дополнительная проверка перед валидацией ----- 
+            required_fields = ['id', 'email', 'first_name', 'last_name', 'is_active', 'created_at', 'updated_at']
+            missing_or_null = [field for field in required_fields if row_dict.get(field) is None]
+            if missing_or_null:
+                 logger.error(f"Validation error for staff ID {staff_id}: Missing or NULL required fields: {missing_or_null}. Row data: {row_dict}")
+                 # Решаем, пропустить или упасть - пока падаем, чтобы увидеть проблему
+                 raise ValueError(f"Missing or NULL required fields: {missing_or_null}")
+            # ----- КОНЕЦ НОВОЙ ПРОВЕРКИ ----- 
             
-            # Возвращаем доступ по ключу s['key'] вместо s.get('key')
-            staff_entry = {
-                "id": s["id"],
-                "email": s["email"],
-                "first_name": s["first_name"],
-                "last_name": s["last_name"],
-                "middle_name": s["middle_name"],
-                "phone": s["phone"],
-                "position": s["position"], 
-                "description": s["description"],
-                "is_active": bool(s["is_active"]), # bool() сам обработает 0 или 1
-                "organization_id": s["organization_id"],
-                "primary_organization_id": s["primary_organization_id"],
-                "location_id": s["location_id"], 
-                "registration_address": s["registration_address"], 
-                "actual_address": s["actual_address"],
-                "telegram_id": s["telegram_id"],
-                "vk": s["vk"],
-                "instagram": s["instagram"],
-                "created_at": s["created_at"],
-                "updated_at": s["updated_at"]
-            }
-            result.append(staff_entry)
-            logger.debug(f"[read_staff] Запись ID={s['id']} успешно добавлена в результат.")
+            # Убедимся, что is_active - это boolean
+            if 'is_active' in row_dict:
+                 row_dict['is_active'] = bool(row_dict['is_active'])
+                 
+            # Попытка валидации
+            logger.debug(f"Attempting to validate data for staff ID {staff_id}: {row_dict}")
+            staff_member = Staff.model_validate(row_dict)
+            staff_list.append(staff_member)
+            logger.debug(f"Successfully validated staff ID {staff_id}")
         except Exception as e:
-            logger.error(f"[read_staff] Ошибка при обработке записи {i+1} (ID={s['id'] if s else 'N/A'}): {e}", exc_info=True)
-            # raise # Пока оставляем закомментированным, чтобы увидеть все ошибки
+            # Логируем ОЧЕНЬ детально
+            logger.error(f"!!! CRITICAL VALIDATION ERROR for staff ID {staff_id} !!!", exc_info=True) 
+            logger.error(f"Row data that caused error for ID {staff_id}: {row_dict}")
+            logger.error(f"Pydantic validation error details: {e}") 
+            # Решаем, что делать: пропустить или упасть?
+            # continue # Пропускаем сотрудника с ошибкой валидации
+            raise HTTPException(status_code=500, detail=f"Error processing staff data for ID {staff_id}. Check logs.") # Падаем с сообщением
     
-    logger.info(f"[read_staff] Успешно обработано {len(result)} записей.")
-    return result
+    logger.info(f"Processed {len(staff_list)} staff rows (simplified query)")
+    return staff_list
 
 @app.post("/staff/", response_model=Staff)
-def create_staff(staff: StaffCreate, db: sqlite3.Connection = Depends(get_db)):
+async def create_staff(
+    # Принимаем данные формы как строку JSON
+    staff_data: str = Form(...),
+    # Принимаем фото (опционально)
+    photo: Optional[UploadFile] = File(None),
+    # Принимаем список документов (может быть пустым)
+    documents: List[UploadFile] = File([]),
+    db: sqlite3.Connection = Depends(get_db)
+):
     """
-    Создать нового сотрудника.
+    Создать нового сотрудника с загрузкой фото и документов.
     """
-    # Проверка, что organization_id и primary_organization_id, если указаны, существуют
+    logger.info("Попытка создания сотрудника с файлами...")
+    
+    # 1. Парсим JSON данные сотрудника из строки
+    try:
+        staff_dict = json.loads(staff_data)
+        staff = StaffCreate(**staff_dict)
+        logger.debug(f"Данные сотрудника успешно распарсены: {staff.email}")
+    except json.JSONDecodeError:
+        logger.error("Ошибка декодирования JSON данных сотрудника")
+        raise HTTPException(status_code=400, detail="Неверный формат JSON данных сотрудника")
+    except Exception as e: # Ловим другие ошибки валидации Pydantic
+        logger.error(f"Ошибка валидации данных сотрудника: {e}")
+        raise HTTPException(status_code=422, detail=f"Ошибка в данных сотрудника: {e}")
+
+    # 2. Проверка существования связанных сущностей (организации, локации)
+    cursor = db.cursor()
     if staff.organization_id is not None:
-        cursor = db.execute("SELECT id FROM organizations WHERE id = ?", (staff.organization_id,))
+        cursor.execute("SELECT id FROM organizations WHERE id = ?", (staff.organization_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail=f"Организация с ID {staff.organization_id} не найдена")
-    
     if staff.primary_organization_id is not None:
-        cursor = db.execute("SELECT id FROM organizations WHERE id = ?", (staff.primary_organization_id,))
+        cursor.execute("SELECT id FROM organizations WHERE id = ?", (staff.primary_organization_id,))
         if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Организация с ID {staff.primary_organization_id} не найдена")
-    
+            raise HTTPException(status_code=404, detail=f"Основная организация с ID {staff.primary_organization_id} не найдена")
     if staff.location_id is not None:
-        cursor = db.execute("SELECT id FROM organizations WHERE id = ?", (staff.location_id,))
-        if not cursor.fetchone():
+        cursor.execute("SELECT id, org_type FROM organizations WHERE id = ?", (staff.location_id,))
+        loc = cursor.fetchone()
+        if not loc:
             raise HTTPException(status_code=404, detail=f"Локация с ID {staff.location_id} не найдена")
-    
-    # Создаем нового сотрудника - используем правильные колонки!
-    cursor = db.execute(
-        """
-        INSERT INTO staff (
-            email, first_name, last_name, middle_name, 
-            phone, position, description, is_active, organization_id, 
-            primary_organization_id, location_id, 
-            registration_address, actual_address, 
-            telegram_id, vk, instagram
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            staff.email,
-            staff.first_name,
-            staff.last_name,
-            staff.middle_name,
-            staff.phone,
-            staff.position, # Теперь сохраняем position!
-            staff.description, # Сохраняем описание, а не адрес
-            1 if staff.is_active else 0,
-            staff.organization_id,
-            staff.primary_organization_id,
-            staff.location_id,
-            staff.registration_address, # Сохраняем в новую колонку
-            staff.actual_address, # Сохраняем в новую колонку
-            staff.telegram_id, # Сохраняем в новую колонку
-            staff.vk, # Сохраняем в новую колонку
-            staff.instagram # Сохраняем в новую колонку
+        if loc["org_type"] != "location":
+            raise HTTPException(status_code=400, detail=f"Организация с ID {staff.location_id} не является локацией")
+
+    # 3. Создаем запись сотрудника в БД (ПОКА БЕЗ ПУТЕЙ К ФАЙЛАМ)
+    saved_photo_path: Optional[str] = None
+    saved_document_paths: List[str] = []
+    new_staff_id: Optional[int] = None
+
+    try:
+        # Преобразуем список путей документов в JSON строку для сохранения
+        doc_paths_json = json.dumps(saved_document_paths) # Пока пустой
+        
+        cursor.execute(
+            """
+            INSERT INTO staff (
+                email, first_name, last_name, middle_name, 
+                phone, description, is_active, organization_id, 
+                primary_organization_id, location_id, 
+                registration_address, actual_address, 
+                telegram_id, vk, instagram, 
+                photo_path, document_paths # Вставляем NULL пока
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                staff.email,
+                staff.first_name,
+                staff.last_name,
+                staff.middle_name,
+                staff.phone,
+                staff.description,
+                1 if staff.is_active else 0,
+                staff.organization_id,
+                staff.primary_organization_id,
+                staff.location_id,
+                staff.registration_address,
+                staff.actual_address,
+                staff.telegram_id,
+                staff.vk,
+                staff.instagram,
+                saved_photo_path, # Пока NULL
+                doc_paths_json # Пока пустой JSON '[]'
+            )
         )
+        new_staff_id = cursor.lastrowid
+        logger.info(f"Запись сотрудника ID {new_staff_id} создана в БД (пока без путей к файлам)")
+
+        # 4. Сохраняем файлы, если они были переданы
+        staff_upload_dir = os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id))
+        os.makedirs(staff_upload_dir, exist_ok=True)
+        logger.debug(f"Создана/проверена директория для загрузок: {staff_upload_dir}")
+
+        # Сохраняем фото
+        if photo:
+            # Генерируем безопасное имя файла (можно добавить timestamp или uuid)
+            photo_filename = f"photo_{datetime.now().strftime('%Y%m%d%H%M%S')}_{photo.filename}"
+            photo_destination = os.path.join(staff_upload_dir, photo_filename)
+            saved_photo_path = save_uploaded_file(photo, photo_destination)
+            logger.info(f"Фото сохранено, относительный путь: {saved_photo_path}")
+        
+        # Сохраняем документы
+        if documents:
+            logger.info(f"Получено {len(documents)} документов для сохранения")
+            for doc in documents:
+                if doc.filename: # Убедимся, что у файла есть имя
+                    doc_filename = f"doc_{datetime.now().strftime('%Y%m%d%H%M%S')}_{doc.filename}"
+                    doc_destination = os.path.join(staff_upload_dir, doc_filename)
+                    saved_path = save_uploaded_file(doc, doc_destination)
+                    saved_document_paths.append(saved_path)
+                    logger.info(f"Документ '{doc.filename}' сохранен, относительный путь: {saved_path}")
+                else:
+                     logger.warning("Пропущен файл документа без имени")
+            logger.info(f"Сохраненные пути документов: {saved_document_paths}")
+        
+        # 5. Обновляем запись сотрудника в БД путями к файлам
+        if saved_photo_path or saved_document_paths:
+            doc_paths_json_updated = json.dumps(saved_document_paths)
+            cursor.execute(
+                "UPDATE staff SET photo_path = ?, document_paths = ? WHERE id = ?",
+                (saved_photo_path, doc_paths_json_updated, new_staff_id)
+            )
+            logger.info(f"Запись сотрудника ID {new_staff_id} обновлена путями к файлам.")
+            
+        # Коммитим все изменения (создание + обновление путей)
+        db.commit()
+        logger.info(f"Все изменения для сотрудника ID {new_staff_id} сохранены в БД.")
+
+    except sqlite3.Error as e:
+        db.rollback() # Откатываем транзакцию
+        logger.error(f"Ошибка SQLite при создании/обновлении сотрудника {staff.email}: {str(e)}", exc_info=True)
+        # Удаляем частично загруженные файлы?
+        if new_staff_id and os.path.exists(os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id))):
+             try:
+                 shutil.rmtree(os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id)))
+                 logger.info(f"Директория {os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id))} удалена из-за ошибки БД.")
+             except Exception as remove_err:
+                 logger.error(f"Ошибка при удалении директории {os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id))}: {remove_err}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка базы данных при создании сотрудника: {str(e)}",
+        )
+    except HTTPException as e: # Перехватываем HTTP ошибки (например, при сохранении файла)
+        db.rollback()
+        # Удаление папки, если она была создана
+        if new_staff_id and os.path.exists(os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id))):
+             try:
+                 shutil.rmtree(os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id)))
+                 logger.info(f"Директория {os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id))} удалена из-за ошибки {e.detail}.")
+             except Exception as remove_err:
+                 logger.error(f"Ошибка при удалении директории {os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id))}: {remove_err}")
+        raise e # Перевыбрасываем HTTP ошибку
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Неожиданная ошибка при создании сотрудника {staff.email}: {e}", exc_info=True)
+        if new_staff_id and os.path.exists(os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id))):
+             try:
+                 shutil.rmtree(os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id)))
+                 logger.info(f"Директория {os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id))} удалена из-за ошибки: {e}.")
+             except Exception as remove_err:
+                 logger.error(f"Ошибка при удалении директории {os.path.join(UPLOAD_DIR_STAFF, str(new_staff_id))}: {remove_err}")
+        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {e}")
+
+    # 6. Получаем финальную запись сотрудника из БД
+    cursor.execute("SELECT * FROM staff WHERE id = ?", (new_staff_id,))
+    created_staff_db = cursor.fetchone()
+    if not created_staff_db:
+        # Эта ситуация маловероятна, но обработаем
+        logger.error(f"Критическая ошибка: не удалось найти только что созданного сотрудника ID {new_staff_id}")
+        raise HTTPException(status_code=500, detail="Ошибка получения данных созданного сотрудника после сохранения файлов")
+
+    # Преобразуем JSON строку обратно в список для ответа
+    final_doc_paths = []
+    if created_staff_db["document_paths"]:
+        try:
+            final_doc_paths = json.loads(created_staff_db["document_paths"])
+        except json.JSONDecodeError:
+            logger.error(f"Ошибка декодирования JSON путей документов для сотрудника ID {new_staff_id}")
+            # Можно вернуть пустой список или null
+
+    # Формируем и возвращаем ответ
+    staff_response = Staff(
+        id=created_staff_db["id"],
+        email=created_staff_db["email"],
+        first_name=created_staff_db["first_name"],
+        last_name=created_staff_db["last_name"],
+        middle_name=created_staff_db["middle_name"],
+        phone=created_staff_db["phone"],
+        description=created_staff_db["description"],
+        is_active=bool(created_staff_db["is_active"]),
+        organization_id=created_staff_db["organization_id"],
+        primary_organization_id=created_staff_db["primary_organization_id"],
+        location_id=created_staff_db["location_id"],
+        registration_address=created_staff_db["registration_address"],
+        actual_address=created_staff_db["actual_address"],
+        telegram_id=created_staff_db["telegram_id"],
+        vk=created_staff_db["vk"],
+        instagram=created_staff_db["instagram"],
+        created_at=created_staff_db["created_at"],
+        updated_at=created_staff_db["updated_at"],
+        photo_path=created_staff_db["photo_path"],
+        document_paths=final_doc_paths
     )
-    db.commit()
-    
-    # Получаем созданного сотрудника
-    created_id = cursor.lastrowid
-    cursor = db.execute("SELECT * FROM staff WHERE id = ?", (created_id,))
-    created = cursor.fetchone()
-    
-    if not created:
-        raise HTTPException(status_code=500, detail="Не удалось получить данные созданного сотрудника")
-    
-    # Формируем ответ - читаем из правильных колонок
-    return {
-        "id": created["id"],
-        "email": created["email"],
-        "first_name": created["first_name"],
-        "last_name": created["last_name"],
-        "middle_name": created["middle_name"],
-        "phone": created["phone"],
-        "position": created["position"], # Возвращаем position
-        "description": created["description"], # Возвращаем описание
-        "is_active": bool(created["is_active"]),
-        "organization_id": created["organization_id"],
-        "primary_organization_id": created["primary_organization_id"],
-        "location_id": created["location_id"],
-        "registration_address": created["registration_address"], # Возвращаем из новой колонки
-        "actual_address": created["actual_address"], # Возвращаем из новой колонки
-        "telegram_id": created["telegram_id"], # Возвращаем из новой колонки
-        "vk": created["vk"], # Возвращаем из новой колонки
-        "instagram": created["instagram"], # Возвращаем из новой колонки
-        "created_at": created["created_at"],
-        "updated_at": created["updated_at"]
-    }
+    logger.info(f"Сотрудник {staff_response.email} (ID: {staff_response.id}) успешно создан с файлами.")
+    return staff_response
 
 @app.post("/staff-positions/", response_model=StaffPosition)
 def create_staff_position(staff_position: StaffPositionCreate, db: sqlite3.Connection = Depends(get_db)):
@@ -2345,93 +2542,249 @@ def read_staff_member(staff_id: int, db: sqlite3.Connection = Depends(get_db)):
     }
 
 @app.put("/staff/{staff_id}", response_model=Staff)
-def update_staff(staff_id: int, staff: StaffCreate, db: sqlite3.Connection = Depends(get_db)):
+async def update_staff(
+    staff_id: int, 
+    staff_data: str = Form(...),
+    photo: Optional[UploadFile] = File(None),
+    documents: List[UploadFile] = File([]),
+    # Флаг для удаления текущего фото без загрузки нового
+    delete_photo: bool = Form(False),
+    # Флаг для удаления ВСЕХ текущих документов без загрузки новых
+    delete_documents: bool = Form(False), 
+    db: sqlite3.Connection = Depends(get_db)
+):
     """
-    Обновить данные сотрудника.
+    Обновить данные сотрудника с возможностью обновления/удаления фото и документов.
     """
-    # Проверяем, что сотрудник существует
-    cursor = db.execute("SELECT id FROM staff WHERE id = ?", (staff_id,))
-    if not cursor.fetchone():
+    logger.info(f"Попытка обновления сотрудника ID {staff_id} с файлами...")
+    cursor = db.cursor()
+
+    # 1. Проверяем, что сотрудник существует и получаем его текущие данные
+    cursor.execute("SELECT * FROM staff WHERE id = ?", (staff_id,))
+    current_staff_db = cursor.fetchone()
+    if not current_staff_db:
         raise HTTPException(status_code=404, detail=f"Сотрудник с ID {staff_id} не найден")
     
-    # Проверка, что organization_id и primary_organization_id, если указаны, существуют
-    if staff.organization_id is not None:
-        cursor = db.execute("SELECT id FROM organizations WHERE id = ?", (staff.organization_id,))
+    current_photo_path = current_staff_db["photo_path"]
+    current_doc_paths_json = current_staff_db["document_paths"]
+    current_document_paths = []
+    if current_doc_paths_json:
+        try:
+            current_document_paths = json.loads(current_doc_paths_json)
+        except json.JSONDecodeError:
+            logger.warning(f"Не удалось декодировать JSON путей документов для сотрудника ID {staff_id}")
+
+    # 2. Парсим JSON данные сотрудника из строки
+    try:
+        staff_dict = json.loads(staff_data)
+        staff_update_data = StaffCreate(**staff_dict) # Используем StaffCreate для валидации
+        logger.debug(f"Данные для обновления сотрудника ID {staff_id} успешно распарсены: {staff_update_data.email}")
+    except json.JSONDecodeError:
+        logger.error("Ошибка декодирования JSON данных сотрудника при обновлении")
+        raise HTTPException(status_code=400, detail="Неверный формат JSON данных сотрудника")
+    except Exception as e:
+        logger.error(f"Ошибка валидации данных сотрудника при обновлении: {e}")
+        raise HTTPException(status_code=422, detail=f"Ошибка в данных сотрудника: {e}")
+
+    # 3. Проверка существования связанных сущностей (организации, локации)
+    # (Аналогично create_staff, но используем staff_update_data)
+    if staff_update_data.organization_id is not None:
+        cursor.execute("SELECT id FROM organizations WHERE id = ?", (staff_update_data.organization_id,))
         if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Организация с ID {staff.organization_id} не найдена")
-    
-    if staff.primary_organization_id is not None:
-        cursor = db.execute("SELECT id FROM organizations WHERE id = ?", (staff.primary_organization_id,))
+            raise HTTPException(status_code=404, detail=f"Организация с ID {staff_update_data.organization_id} не найдена")
+    if staff_update_data.primary_organization_id is not None:
+        cursor.execute("SELECT id FROM organizations WHERE id = ?", (staff_update_data.primary_organization_id,))
         if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Организация с ID {staff.primary_organization_id} не найдена")
+            raise HTTPException(status_code=404, detail=f"Основная организация с ID {staff_update_data.primary_organization_id} не найдена")
+    if staff_update_data.location_id is not None:
+        cursor.execute("SELECT id, org_type FROM organizations WHERE id = ?", (staff_update_data.location_id,))
+        loc = cursor.fetchone()
+        if not loc:
+            raise HTTPException(status_code=404, detail=f"Локация с ID {staff_update_data.location_id} не найдена")
+        if loc["org_type"] != "location":
+            raise HTTPException(status_code=400, detail=f"Организация с ID {staff_update_data.location_id} не является локацией")
+
+    # 4. Обработка файлов
+    staff_upload_dir = os.path.join(UPLOAD_DIR_STAFF, str(staff_id))
+    os.makedirs(staff_upload_dir, exist_ok=True)
     
-    if staff.location_id is not None:
-        cursor = db.execute("SELECT id FROM organizations WHERE id = ?", (staff.location_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Локация с ID {staff.location_id} не найдена")
-    
-    # Обновляем сотрудника - используем правильные колонки!
-    db.execute(
-        """
-        UPDATE staff SET
-            email = ?, first_name = ?, last_name = ?, middle_name = ?,
-            phone = ?, position = ?, description = ?, is_active = ?, 
-            organization_id = ?, primary_organization_id = ?, location_id = ?, 
-            registration_address = ?, actual_address = ?, 
-            telegram_id = ?, vk = ?, instagram = ?
-        WHERE id = ?
-        """,
-        (
-            staff.email,
-            staff.first_name,
-            staff.last_name,
-            staff.middle_name,
-            staff.phone,
-            staff.position, # Обновляем position
-            staff.description, # Обновляем описание
-            1 if staff.is_active else 0,
-            staff.organization_id,
-            staff.primary_organization_id,
-            staff.location_id,
-            staff.registration_address, # Обновляем в новой колонке
-            staff.actual_address, # Обновляем в новой колонке
-            staff.telegram_id, # Обновляем в новой колонке
-            staff.vk, # Обновляем в новой колонке
-            staff.instagram, # Обновляем в новой колонке
-            staff_id
+    new_photo_path = current_photo_path
+    new_document_paths = current_document_paths
+
+    # Обработка фото
+    if delete_photo:
+        if current_photo_path:
+            photo_full_path = os.path.join(os.getcwd(), current_photo_path)
+            if os.path.exists(photo_full_path):
+                try:
+                    os.remove(photo_full_path)
+                    logger.info(f"Старое фото {current_photo_path} удалено для сотрудника ID {staff_id}")
+                except OSError as e:
+                    logger.error(f"Ошибка при удалении старого фото {current_photo_path}: {e}")
+            else: 
+                logger.warning(f"Старый файл фото {current_photo_path} не найден по пути {photo_full_path}")
+        new_photo_path = None # Устанавливаем в None
+        logger.info(f"Фото для сотрудника ID {staff_id} помечено на удаление (без загрузки нового).")
+    elif photo:
+        # Удаляем старое фото перед сохранением нового
+        if current_photo_path:
+            photo_full_path = os.path.join(os.getcwd(), current_photo_path)
+            if os.path.exists(photo_full_path):
+                try:
+                    os.remove(photo_full_path)
+                    logger.info(f"Старое фото {current_photo_path} удалено перед загрузкой нового для сотрудника ID {staff_id}")
+                except OSError as e:
+                     logger.error(f"Ошибка при удалении старого фото {current_photo_path}: {e}")
+            else: 
+                logger.warning(f"Старый файл фото {current_photo_path} не найден по пути {photo_full_path}")
+        # Сохраняем новое фото
+        photo_filename = f"photo_{datetime.now().strftime('%Y%m%d%H%M%S')}_{photo.filename}"
+        photo_destination = os.path.join(staff_upload_dir, photo_filename)
+        new_photo_path = save_uploaded_file(photo, photo_destination)
+        logger.info(f"Новое фото для сотрудника ID {staff_id} сохранено, путь: {new_photo_path}")
+
+    # Обработка документов
+    if delete_documents:
+        if current_document_paths:
+            logger.info(f"Удаление старых документов для сотрудника ID {staff_id}...")
+            for doc_path in current_document_paths:
+                doc_full_path = os.path.join(os.getcwd(), doc_path)
+                if os.path.exists(doc_full_path):
+                    try:
+                        os.remove(doc_full_path)
+                        logger.debug(f"Удален старый документ: {doc_path}")
+                    except OSError as e:
+                        logger.error(f"Ошибка при удалении старого документа {doc_path}: {e}")
+                else:
+                    logger.warning(f"Старый файл документа {doc_path} не найден по пути {doc_full_path}")
+            new_document_paths = [] # Очищаем список
+            logger.info(f"Все старые документы для сотрудника ID {staff_id} удалены.")
+        else:
+             logger.info(f"Нет старых документов для удаления у сотрудника ID {staff_id}.")
+    elif documents: # Если переданы новые документы (даже пустой список, если форма отправила)
+        # Сначала удаляем все старые документы (режим замены)
+        if current_document_paths:
+            logger.info(f"Удаление старых документов перед загрузкой новых для сотрудника ID {staff_id}...")
+            for doc_path in current_document_paths:
+                doc_full_path = os.path.join(os.getcwd(), doc_path)
+                if os.path.exists(doc_full_path):
+                    try:
+                        os.remove(doc_full_path)
+                        logger.debug(f"Удален старый документ: {doc_path}")
+                    except OSError as e:
+                        logger.error(f"Ошибка при удалении старого документа {doc_path}: {e}")
+                else:
+                     logger.warning(f"Старый файл документа {doc_path} не найден по пути {doc_full_path}")
+        # Сохраняем новые документы
+        new_document_paths = [] # Начинаем с чистого списка
+        logger.info(f"Сохранение {len(documents)} новых документов для сотрудника ID {staff_id}...")
+        for doc in documents:
+            if doc.filename:
+                doc_filename = f"doc_{datetime.now().strftime('%Y%m%d%H%M%S')}_{doc.filename}"
+                doc_destination = os.path.join(staff_upload_dir, doc_filename)
+                saved_path = save_uploaded_file(doc, doc_destination)
+                new_document_paths.append(saved_path)
+                logger.debug(f"Новый документ сохранен: {saved_path}")
+            else:
+                logger.warning("Пропущен файл документа без имени при обновлении")
+        logger.info(f"Новые документы для сотрудника ID {staff_id} сохранены, пути: {new_document_paths}")
+
+    # 5. Обновляем запись сотрудника в БД
+    try:
+        doc_paths_json_updated = json.dumps(new_document_paths)
+        
+        db.execute(
+            """
+            UPDATE staff SET
+                email = ?, first_name = ?, last_name = ?, middle_name = ?,
+                phone = ?, description = ?, is_active = ?, 
+                organization_id = ?, primary_organization_id = ?, location_id = ?, 
+                registration_address = ?, actual_address = ?, 
+                telegram_id = ?, vk = ?, instagram = ?,
+                photo_path = ?, document_paths = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                staff_update_data.email,
+                staff_update_data.first_name,
+                staff_update_data.last_name,
+                staff_update_data.middle_name,
+                staff_update_data.phone,
+                staff_update_data.description,
+                1 if staff_update_data.is_active else 0,
+                staff_update_data.organization_id,
+                staff_update_data.primary_organization_id,
+                staff_update_data.location_id,
+                staff_update_data.registration_address,
+                staff_update_data.actual_address,
+                staff_update_data.telegram_id,
+                staff_update_data.vk,
+                staff_update_data.instagram,
+                new_photo_path, # Обновленный путь к фото
+                doc_paths_json_updated, # Обновленный JSON путей к документам
+                staff_id
+            )
         )
+        db.commit()
+        logger.info(f"Запись сотрудника ID {staff_id} успешно обновлена в БД.")
+
+    except sqlite3.Error as e:
+        db.rollback()
+        logger.error(f"Ошибка SQLite при обновлении сотрудника ID {staff_id}: {str(e)}", exc_info=True)
+        # В случае ошибки БД, мы НЕ должны откатывать изменения файлов, 
+        # так как они могли быть успешно удалены/заменены до ошибки.
+        # Возможно, стоит логировать это состояние несоответствия.
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка базы данных при обновлении сотрудника: {str(e)}",
+        )
+    except HTTPException as e: # Ошибка при сохранении файла
+        db.rollback() # Откатываем изменения в БД, если они были
+        raise e
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Неожиданная ошибка при обновлении сотрудника ID {staff_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {e}")
+
+    # 6. Получаем финальную запись сотрудника из БД
+    cursor.execute("SELECT * FROM staff WHERE id = ?", (staff_id,))
+    updated_staff_db = cursor.fetchone()
+    if not updated_staff_db:
+        logger.error(f"Критическая ошибка: не удалось найти только что обновленного сотрудника ID {staff_id}")
+        raise HTTPException(status_code=500, detail="Ошибка получения данных обновленного сотрудника")
+
+    final_doc_paths = []
+    if updated_staff_db["document_paths"]:
+        try:
+            final_doc_paths = json.loads(updated_staff_db["document_paths"])
+        except json.JSONDecodeError:
+            logger.error(f"Ошибка декодирования JSON путей документов для сотрудника ID {staff_id} после обновления")
+
+    staff_response = Staff(
+        id=updated_staff_db["id"],
+        email=updated_staff_db["email"],
+        first_name=updated_staff_db["first_name"],
+        last_name=updated_staff_db["last_name"],
+        middle_name=updated_staff_db["middle_name"],
+        phone=updated_staff_db["phone"],
+        description=updated_staff_db["description"],
+        is_active=bool(updated_staff_db["is_active"]),
+        organization_id=updated_staff_db["organization_id"],
+        primary_organization_id=updated_staff_db["primary_organization_id"],
+        location_id=updated_staff_db["location_id"],
+        registration_address=updated_staff_db["registration_address"],
+        actual_address=updated_staff_db["actual_address"],
+        telegram_id=updated_staff_db["telegram_id"],
+        vk=updated_staff_db["vk"],
+        instagram=updated_staff_db["instagram"],
+        created_at=updated_staff_db["created_at"],
+        updated_at=updated_staff_db["updated_at"],
+        photo_path=updated_staff_db["photo_path"],
+        document_paths=final_doc_paths
     )
-    db.commit()
-    
-    # Получаем обновленного сотрудника
-    cursor = db.execute("SELECT * FROM staff WHERE id = ?", (staff_id,))
-    updated = cursor.fetchone()
-    
-    if not updated:
-        raise HTTPException(status_code=500, detail="Не удалось получить данные обновленного сотрудника")
-    
-    # Формируем ответ - читаем из правильных колонок
-    return {
-        "id": updated["id"],
-        "email": updated["email"],
-        "first_name": updated["first_name"],
-        "last_name": updated["last_name"],
-        "middle_name": updated["middle_name"],
-        "phone": updated["phone"],
-        "position": updated["position"], # Возвращаем position
-        "description": updated["description"], # Возвращаем описание
-        "is_active": bool(updated["is_active"]),
-        "organization_id": updated["organization_id"],
-        "primary_organization_id": updated["primary_organization_id"],
-        "location_id": updated["location_id"],
-        "registration_address": updated["registration_address"], # Возвращаем из новой колонки
-        "actual_address": updated["actual_address"], # Возвращаем из новой колонки
-        "telegram_id": updated["telegram_id"], # Возвращаем из новой колонки
-        "vk": updated["vk"], # Возвращаем из новой колонки
-        "instagram": updated["instagram"], # Возвращаем из новой колонки
-        "created_at": updated["created_at"],
-        "updated_at": updated["updated_at"]
-    }
+    logger.info(f"Сотрудник {staff_response.email} (ID: {staff_response.id}) успешно обновлен.")
+    return staff_response
 
 @app.delete("/staff/{staff_id}", response_model=dict)
 def delete_staff(staff_id: int, db: sqlite3.Connection = Depends(get_db)):
@@ -2706,3 +3059,38 @@ def read_locations(db: sqlite3.Connection = Depends(get_db)):
     except Exception as e:
         logger.error(f"[read_locations] Непредвиденная ошибка при запросе локаций: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера при получении локаций")
+
+# --- НОВЫЕ УТИЛИТЫ ДЛЯ ФАЙЛОВ ---
+
+# Папка для загрузки файлов сотрудников
+UPLOAD_DIR_STAFF = "backend/uploads/staff"
+
+# Создаем папку, если не существует (на всякий случай, хотя мы уже создали командой)
+os.makedirs(UPLOAD_DIR_STAFF, exist_ok=True)
+
+def save_uploaded_file(file: UploadFile, destination: str) -> str:
+    """Сохраняет загруженный файл по указанному пути."""
+    try:
+        # Убедимся, что директория для сохранения существует
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        with open(destination, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        logger.info(f"Файл '{file.filename}' успешно сохранен в '{destination}'")
+        # Возвращаем относительный путь от корня приложения для сохранения в БД
+        # (предполагаем, что папка uploads будет доступна статически)
+        relative_path = os.path.relpath(destination, start=os.getcwd()) # Получаем относительный путь
+        # Заменяем обратные слеши на прямые для URL
+        return relative_path.replace("\\", "/")
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении файла '{file.filename}' в '{destination}': {e}")
+        # Возможно, стоит удалить файл, если он частично записался?
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить файл {file.filename}")
+    finally:
+        file.file.close() # Обязательно закрываем файл
+
+# --- КОНЕЦ УТИЛИТ ДЛЯ ФАЙЛОВ ---
+
+# Монтируем папку uploads для раздачи статических файлов (фото, документы)
+# Путь /uploads будет доступен для запросов
+# ВРЕМЕННО КОММЕНТИРУЕМ ЭТО
+# app.mount("/uploads", StaticFiles(directory="backend/uploads"), name="uploads")

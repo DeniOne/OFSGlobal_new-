@@ -58,41 +58,69 @@ const contentStyle: React.CSSProperties = {
 // .main-content::-webkit-scrollbar-thumb { background: rgba(157, 106, 245, 0.5); border-radius: 3px; }
 // .main-content::-webkit-scrollbar-thumb:hover { background: rgba(157, 106, 245, 0.7); box-shadow: 0 0 6px rgba(157, 106, 245, 0.5); }
 
-// Стили для кастомизации меню - ДОБАВЛЯЕМ ТЕНИ И HOVER
+// Стили для кастомизации меню - ПЫТАЕМСЯ ВНЕСТИ NEOMORPHISM (Попытка №2 с !important)
 const menuStyles = `
+  /* Базовый вид пункта меню (немного выпуклый) */
   .main-layout-sider .ant-menu-item,
   .main-layout-sider .ant-menu-submenu-title {
-    font-size: 15px; 
-    padding: 12px 20px !important; // Увеличим отступы для "воздуха"
-    height: auto; 
+    font-size: 15px;
+    padding: 12px 20px !important;
+    height: auto;
     line-height: normal;
-    margin-bottom: 4px !important; // Небольшой отступ между кнопками
-    border-radius: 6px; // Легкое скругление
-    transition: background 0.2s ease, box-shadow 0.2s ease; // Плавные переходы
+    margin-bottom: 8px !important; /* Чуть больше отступ */
+    border-radius: var(--neo-border-radius, 6px);
+    transition: background 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+    background: transparent !important; /* Убедимся, что фон прозрачный */
+    /* Применяем базовую нео-тень с !important */
+    box-shadow:
+      calc(var(--neo-shadow-offset, 4px) * -1) calc(var(--neo-shadow-offset, 4px) * -1) var(--neo-shadow-blur, 8px) rgba(255, 255, 255, 0.08), /* Светлая чуть ярче */
+      var(--neo-shadow-offset, 4px) var(--neo-shadow-offset, 4px) var(--neo-shadow-blur, 8px) rgba(0, 0, 0, 0.5) !important; /* Темная чуть темнее */
+    color: var(--neo-text-color, rgba(255, 255, 255, 0.8));
+    border: none; /* Убираем возможные границы antd */
+    position: relative; /* Для z-index при hover */
   }
+
+  /* Эффект при наведении (вдавленный) */
   .main-layout-sider .ant-menu-item:hover,
   .main-layout-sider .ant-menu-submenu-title:hover {
-    /* Эффект легкого "вдавливания" при наведении */
-    background: rgba(255, 255, 255, 0.05) !important;
-    box-shadow: inset 1px 1px 2px rgba(0,0,0,0.3), 
-                inset -1px -1px 2px rgba(255,255,255,0.05);
+    background: rgba(255, 255, 255, 0.03) !important; /* Легкий фон при наведении */
+    /* Применяем вдавленную нео-тень с !important */
+    box-shadow:
+      inset calc(var(--neo-shadow-offset, 4px) * -1) calc(var(--neo-shadow-offset, 4px) * -1) var(--neo-shadow-blur, 8px) rgba(0, 0, 0, 0.6), /* Темная сверху-слева */
+      inset var(--neo-shadow-offset, 4px) var(--neo-shadow-offset, 4px) var(--neo-shadow-blur, 8px) rgba(255, 255, 255, 0.06) !important; /* Светлая снизу-справа */
+    color: var(--neo-text-color-light, #ffffff) !important; /* Яркий текст при наведении */
+    z-index: 1; /* Чтобы тень не обрезалась соседями */
   }
+
+  /* Активный/выбранный пункт меню (основной цвет + выпуклая тень) */
   .main-layout-sider .ant-menu-item-selected {
-    /* Возвращаем фиолетовый и добавляем объем */
-    box-shadow: 1px 1px 3px rgba(0,0,0,0.4), 
-                -1px -1px 3px rgba(255,255,255,0.1), 
-                inset 0 0 1px rgba(0,0,0,0.2); /* Легкая внутренняя тень для объема */
-    font-weight: 600; /* Сделаем текст активного пункта жирнее */
+    background: var(--neo-primary-bg, #9D6AF5) !important; /* Основной цвет оставляем */
+    color: var(--neo-text-color-light, #ffffff) !important; /* Белый текст */
+    font-weight: 600;
+    /* Применяем тень как у primary кнопки с !important */
+    box-shadow:
+      calc(var(--neo-shadow-offset, 4px) * -1) calc(var(--neo-shadow-offset, 4px) * -1) var(--neo-shadow-blur, 8px) rgba(255, 255, 255, 0.15), /* Светлая тень для цветного фона */
+      var(--neo-shadow-offset, 4px) var(--neo-shadow-offset, 4px) var(--neo-shadow-blur, 8px) rgba(0, 0, 0, 0.6) !important; /* Темная тень для цветного фона */
+    z-index: 2; /* Выше чем hover */
   }
+
+  /* Убираем стандартную левую рамку у активного элемента, если она есть */
+  .main-layout-sider .ant-menu-item-selected::after {
+      border-right: none !important;
+  }
+
+  /* Стили для иконок и текста внутри пунктов */
   .main-layout-sider .ant-menu-item .anticon,
   .main-layout-sider .ant-menu-submenu-title .anticon {
-    font-size: 18px; 
+    font-size: 18px;
     vertical-align: middle;
+    transition: color 0.2s ease;
   }
   .main-layout-sider .ant-menu-item span,
   .main-layout-sider .ant-menu-submenu-title span {
-    vertical-align: middle; 
-    margin-left: 12px; // Увеличим отступ текста от иконки
+    vertical-align: middle;
+    margin-left: 12px;
+    transition: color 0.2s ease;
   }
 `;
 
@@ -175,28 +203,33 @@ const MainLayout: React.FC = () => {
             darkSubMenuItemBg: 'rgba(255, 255, 255, 0.02)' // Легкий фон для подменю
           },
           Button: {
-             // Базовые стили для default кнопки
-             defaultBg: '#2a2a30',
-             defaultColor: 'rgba(255, 255, 255, 0.8)',
-             defaultBorderColor: 'rgba(255, 255, 255, 0.15)',
-             defaultHoverBg: '#333338',
-             defaultHoverColor: '#fff',
-             defaultHoverBorderColor: 'rgba(157, 106, 245, 0.7)', 
-             defaultActiveBg: '#25252a', // Цвет при нажатии
-             defaultActiveBorderColor: 'rgba(157, 106, 245, 0.9)', 
-             defaultShadow: '0 1px 2px rgba(0, 0, 0, 0.3)', // Тень для default кнопки
+             // Используем наши CSS переменные для базовых стилей default кнопки
+             defaultColor: 'var(--neo-text-color)',
+             defaultBg: 'var(--neo-default-bg)', 
+             defaultBorderColor: 'transparent', // Убираем границу
+             defaultShadow: 'none', // Убираем стандартную тень antd
              
-             // Стили для primary кнопки
-             primaryColor: '#ffffff', // Белый текст на фиолетовом
-             colorPrimaryHover: '#ad7ff7', // Чуть светлее при наведении
-             colorPrimaryActive: '#8e5cdb', // Темнее при нажатии
-             primaryShadow: '0 2px 4px rgba(157, 106, 245, 0.4)', // Фиолетовая тень для primary
+             // Используем наши CSS переменные для hover/active default кнопки
+             defaultHoverColor: 'var(--neo-text-color-light)',
+             defaultHoverBg: 'var(--neo-default-bg-hover)',
+             defaultHoverBorderColor: 'transparent', // Убираем границу
+             defaultActiveColor: 'rgba(255, 255, 255, 0.6)', // Из нашего CSS
+             defaultActiveBg: 'var(--neo-default-bg-active)', 
+             defaultActiveBorderColor: 'transparent', // Убираем границу
              
-             // Стили для danger кнопки (будут использоваться с colorError)
-             dangerColor: '#ffffff', // Белый текст на красном
-             colorErrorHover: '#ff4d4f', // Ярче красный при наведении
-             colorErrorActive: '#cf1322', // Темнее красный при нажатии
-             dangerShadow: '0 2px 4px rgba(245, 34, 45, 0.4)', // Красная тень для danger
+             // Стили для primary кнопки (цвет фона уже задан через token.colorPrimary)
+             primaryColor: 'var(--neo-text-color-light)', 
+             primaryShadow: 'none', // Убираем стандартную тень antd
+             colorPrimaryBorder: 'transparent', // Попробуем убрать границу, если она есть
+             colorPrimaryHover: 'var(--neo-primary-bg-hover)',
+             colorPrimaryActive: 'var(--neo-primary-bg-active)', 
+             
+             // Стили для danger кнопки (цвет фона задан через token.colorError)
+             dangerColor: 'var(--neo-text-color-light)',
+             dangerShadow: 'none', // Убираем стандартную тень antd
+             colorErrorBorder: 'transparent', // Попробуем убрать границу
+             colorErrorHover: 'var(--neo-danger-bg-hover)',
+             colorErrorActive: 'var(--neo-danger-bg-active)', 
              
              // Общие
              borderRadius: 6, // Явно задаем скругление и для кнопок

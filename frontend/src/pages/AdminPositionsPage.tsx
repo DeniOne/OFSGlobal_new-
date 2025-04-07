@@ -8,9 +8,10 @@ import {
   Input,
   Select,
   Spin,
-  message,
+  App,
   Switch,
-  Typography
+  Typography,
+  Popconfirm
 } from 'antd';
 import {
   EditOutlined,
@@ -19,6 +20,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 import api from '../services/api';
+import { CultNeumorphButton } from '../components/ui/CultNeumorphButton';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -41,8 +43,8 @@ interface Division {
   name: string;
 }
 
-// !!! ВАЖНО: Переименовать компонент вручную в PositionsPage !!!
 const AdminPositionsPage: React.FC = () => {
+  const { message } = App.useApp();
   const [tableLoading, setTableLoading] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -62,29 +64,60 @@ const AdminPositionsPage: React.FC = () => {
     const signal = abortControllerRef.current.signal;
 
     setTableLoading(true);
+    message.destroy();
+    
     try {
-      const [positionsResponse, divisionsResponse] = await Promise.all([
-        api.get('/positions/', { signal }), // Загружаем должности
-        api.get('/divisions/', { signal })  // Загружаем подразделения
+      const [positionsResponse, divisionsResponse] = await Promise.allSettled([
+        api.get('/positions/', { signal }), 
+        api.get('/divisions/', { signal })  
       ]);
       
-      setPositions(positionsResponse.data);
-      setDivisions(divisionsResponse.data);
+      // Обработка должностей (критично)
+      if (positionsResponse.status === 'fulfilled') {
+        if (!signal.aborted) { 
+          setPositions(positionsResponse.value.data);
+        }
+      } else { // status === 'rejected'
+        if (!signal.aborted) { 
+          // Проверяем, что причина - не AbortError
+          if (positionsResponse.reason && positionsResponse.reason.name !== 'AbortError') {
+            console.error("[AdminPositionsPage] Ошибка при загрузке должностей:", positionsResponse.reason); // Добавляем лог
+            message.error('Критическая ошибка: Не удалось загрузить список должностей.');
+          }
+          setPositions([]);
+        }
+      }
+
+      // Обработка подразделений (не критично)
+      if (divisionsResponse.status === 'fulfilled') {
+        if (!signal.aborted) { 
+          setDivisions(divisionsResponse.value.data);
+        }
+      } else { // status === 'rejected'
+        if (!signal.aborted) { 
+           // Проверяем, что причина - не AbortError
+           if (divisionsResponse.reason && divisionsResponse.reason.name !== 'AbortError') {
+             console.warn("[AdminPositionsPage] Ошибка при загрузке подразделений:", divisionsResponse.reason); // Добавляем лог
+             message.warning('Не удалось загрузить список подразделений. Фильтр и отображение могут быть неполными.');
+           }
+          setDivisions([]);
+        }
+      }
 
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log('[LOG:Positions] Fetch aborted');
-        return;
-      }
-      console.error('[LOG:Positions] Ошибка при загрузке данных:', error);
-      message.error('Ошибка при загрузке данных для должностей.');
+       if (error.name === 'AbortError') {
+         return; 
+       }
+      message.error('Произошла непредвиденная ошибка при загрузке данных.');
+      setPositions([]);
+      setDivisions([]);
     } finally {
        if (!signal.aborted) {
           setTableLoading(false);
           abortControllerRef.current = null;
       }
     }
-  }, []);
+  }, [message]);
 
   useEffect(() => {
     fetchData();
@@ -122,7 +155,6 @@ const AdminPositionsPage: React.FC = () => {
       if (dataToSend.division_id === undefined || dataToSend.division_id === '') {
           dataToSend.division_id = null;
       }
-      console.log('[LOG:Positions] Данные для отправки:', dataToSend);
 
       if (editingItem) {
         await api.put(`/positions/${editingItem.id}`, dataToSend);
@@ -135,7 +167,6 @@ const AdminPositionsPage: React.FC = () => {
       setEditingItem(null);
       fetchData();
     } catch (error: any) {
-      console.error('[LOG:Positions] Ошибка при сохранении:', error);
       let errorMessage = 'Ошибка при сохранении должности';
         if (error.response?.data?.detail) {
              if (Array.isArray(error.response.data.detail)) {
@@ -148,7 +179,6 @@ const AdminPositionsPage: React.FC = () => {
         } else if (error.message) {
              errorMessage = error.message;
         }
-        // Можно добавить проверку на 404, если нужно
       message.error(errorMessage);
     } finally {
       setModalLoading(false);
@@ -170,7 +200,6 @@ const AdminPositionsPage: React.FC = () => {
           message.success('Должность успешно удалена');
           fetchData();
         } catch (error) {
-          console.error('[LOG:Positions] Ошибка при удалении:', error);
           message.error('Ошибка при удалении должности.');
           setTableLoading(false);
         }
@@ -209,8 +238,21 @@ const AdminPositionsPage: React.FC = () => {
       key: 'actions',
       render: (_: any, record: Position) => (
         <Space size="middle">
-          <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} />
-          <Button icon={<DeleteOutlined />} danger onClick={() => handleDelete(record.id)} />
+          <CultNeumorphButton size="small" intent="secondary" onClick={() => handleEdit(record)}>
+            <EditOutlined />
+          </CultNeumorphButton>
+          <Popconfirm
+            title="Удалить должность?"
+            description={`Вы уверены, что хотите удалить "${record.name}"?`}
+            onConfirm={() => handleDelete(record.id)}
+            okText="Да, удалить"
+            cancelText="Отмена"
+            okButtonProps={{ danger: true }} 
+          >
+            <CultNeumorphButton size="small" intent="danger">
+              <DeleteOutlined />
+            </CultNeumorphButton>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -222,17 +264,22 @@ const AdminPositionsPage: React.FC = () => {
     .map(pos => (
         <Option key={pos.id} value={pos.id}>{pos.name}</Option>
     ));
+    
+  // !!! ЛОГ ПЕРЕД РЕНДЕРОМ !!!
+  console.log(`[AdminPositionsPage] Rendering table with ${positions.length} positions. First position ID: ${positions[0]?.id}`);
 
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
-      <Title level={2}>Должности</Title> // Меняем заголовок
+      <Title level={2}>Должности</Title>
       <Space style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
-          Добавить должность // Меняем текст кнопки
-        </Button>
-        <Button icon={<ReloadOutlined />} onClick={fetchData} loading={tableLoading}>
+        <CultNeumorphButton intent="primary" onClick={handleCreate}>
+          <PlusOutlined style={{ marginRight: '8px' }} />
+          Добавить должность
+        </CultNeumorphButton>
+        <CultNeumorphButton onClick={fetchData} loading={tableLoading}>
+          <ReloadOutlined style={{ marginRight: '8px' }} />
           Обновить
-        </Button>
+        </CultNeumorphButton>
       </Space>
       
       <Spin spinning={tableLoading}>
@@ -246,12 +293,17 @@ const AdminPositionsPage: React.FC = () => {
 
       {/* Модальное окно */}
       <Modal
-        title={editingItem ? 'Редактировать должность' : 'Создать должность'} // Меняем заголовок
-        visible={isModalVisible}
-        onOk={handleSave}
+        title={editingItem ? 'Редактировать должность' : 'Создать должность'}
+        open={isModalVisible}
         onCancel={() => setIsModalVisible(false)}
-        confirmLoading={modalLoading}
-        destroyOnClose
+        footer={[
+            <CultNeumorphButton key="cancel" intent="secondary" onClick={() => setIsModalVisible(false)}>
+              Отмена
+            </CultNeumorphButton>,
+            <CultNeumorphButton key="submit" intent="primary" loading={modalLoading} onClick={handleSave}>
+              {editingItem ? 'Сохранить' : 'Создать'}
+            </CultNeumorphButton>,
+        ]}
       >
         <Spin spinning={modalLoading}>
           <Form form={form} layout="vertical" name="positionForm">
@@ -303,5 +355,4 @@ const AdminPositionsPage: React.FC = () => {
   );
 };
 
-// !!! ВАЖНО: Переименовать компонент вручную в PositionsPage !!!
 export default AdminPositionsPage; 
