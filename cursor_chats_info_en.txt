@@ -1,0 +1,292 @@
+=============================================
+Cursor Chat Information
+Extraction Date: 04/08/2025 02:24:32
+=============================================
+
+
+========== Workspace: 07bcf0f36cb80d581598350b893ebdd3 ==========
+Workspace path: file:///d%3A/MyWhisper
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\07bcf0f36cb80d581598350b893ebdd3\state.vscdb
+Database size: 77824 bytes
+Last modified: 03/23/2025 18:33:29
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_07bcf0f36cb80d581598350b893ebdd3.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: 19bab1ae461359f323cc04a86ba9757d ==========
+Workspace path: file:///c%3A/OFS
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\19bab1ae461359f323cc04a86ba9757d\state.vscdb
+Database size: 69632 bytes
+Last modified: 03/20/2025 22:24:44
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_19bab1ae461359f323cc04a86ba9757d.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: 241d485f0eff63d8277df41b757d10e8 ==========
+Workspace path: file:///c%3A/OFSexe
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\241d485f0eff63d8277df41b757d10e8\state.vscdb
+Database size: 143360 bytes
+Last modified: 03/20/2025 22:24:18
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_241d485f0eff63d8277df41b757d10e8.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: 2fcfde3cf7029a670922344e796a5f6e ==========
+Workspace path: file:///d%3A/OFS_Global/ofs_project/ofs_new
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\2fcfde3cf7029a670922344e796a5f6e\state.vscdb
+Database size: 1605632 bytes
+Last modified: 04/08/2025 02:23:46
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_2fcfde3cf7029a670922344e796a5f6e.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: 327f477bb0ced5e85ae27cbf633c5afe ==========
+Workspace path: file:///d%3A/ERP_Photomatrix
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\327f477bb0ced5e85ae27cbf633c5afe\state.vscdb
+Database size: 40960 bytes
+Last modified: 03/23/2025 20:09:54
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_327f477bb0ced5e85ae27cbf633c5afe.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: 666be928805d414e2f17d77f110e5b87 ==========
+Workspace path: file:///c%3A/BOTS/OFS
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\666be928805d414e2f17d77f110e5b87\state.vscdb
+Database size: 299008 bytes
+Last modified: 03/21/2025 02:30:27
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_666be928805d414e2f17d77f110e5b87.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: 6c14d8b9f8d640ccd6a3c505b9c674fa ==========
+Workspace path: file:///d%3A/iPhone
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\6c14d8b9f8d640ccd6a3c505b9c674fa\state.vscdb
+Database size: 57344 bytes
+Last modified: 04/01/2025 17:45:06
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_6c14d8b9f8d640ccd6a3c505b9c674fa.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: 6c36a99a2d177fc0bc5c482587ec5530 ==========
+Workspace path: file:///d%3A/OFS_Global/ofs_project_backup_20250326_0033
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\6c36a99a2d177fc0bc5c482587ec5530\state.vscdb
+Database size: 102400 bytes
+Last modified: 03/27/2025 20:00:33
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_6c36a99a2d177fc0bc5c482587ec5530.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: 74f2fb1d43b9d2c61e84c8cd1360ce24 ==========
+Workspace path: 
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\74f2fb1d43b9d2c61e84c8cd1360ce24\state.vscdb
+Database size: 86016 bytes
+Last modified: 03/17/2025 21:10:44
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_74f2fb1d43b9d2c61e84c8cd1360ce24.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: 7db4b6d718f82d3b5ea067140656bccf ==========
+Workspace path: file:///d%3A/PokerCast
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\7db4b6d718f82d3b5ea067140656bccf\state.vscdb
+Database size: 106496 bytes
+Last modified: 03/21/2025 22:42:31
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_7db4b6d718f82d3b5ea067140656bccf.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: 80988d99bda3ca8e0cac8e0c91c17e44 ==========
+Workspace path: file:///e%3A/R-stidio/1/Root/OFS_Global/ofs_project
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\80988d99bda3ca8e0cac8e0c91c17e44\state.vscdb
+Database size: 57344 bytes
+Last modified: 03/27/2025 17:17:17
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_80988d99bda3ca8e0cac8e0c91c17e44.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: 951ebaf637d0a44ba60ed0894142df15 ==========
+Workspace path: file:///d%3A/%D0%9E%D0%A4%D0%A1
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\951ebaf637d0a44ba60ed0894142df15\state.vscdb
+Database size: 131072 bytes
+Last modified: 03/22/2025 18:08:52
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_951ebaf637d0a44ba60ed0894142df15.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: ac291a113f23025f9ec9ccdc7f50b930 ==========
+Workspace path: file:///c%3A/BOTS/Bot_STAFFCursor
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\ac291a113f23025f9ec9ccdc7f50b930\state.vscdb
+Database size: 126976 bytes
+Last modified: 03/19/2025 15:19:02
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_ac291a113f23025f9ec9ccdc7f50b930.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: acae4feeb20901f8c7c84600cf78dc6f ==========
+Workspace path: file:///d%3A/OpenManus
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\acae4feeb20901f8c7c84600cf78dc6f\state.vscdb
+Database size: 57344 bytes
+Last modified: 03/27/2025 00:09:35
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_acae4feeb20901f8c7c84600cf78dc6f.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: bffeb98503e87de0447ed089bb484e97 ==========
+Workspace path: file:///d%3A/OFS_Global/ofs_project
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\bffeb98503e87de0447ed089bb484e97\state.vscdb
+Database size: 274432 bytes
+Last modified: 03/29/2025 00:08:08
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_bffeb98503e87de0447ed089bb484e97.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: c56e97689d7a4d8cfc0f4101ac182d6b ==========
+Workspace path: file:///d%3A/ERPGlobal
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\c56e97689d7a4d8cfc0f4101ac182d6b\state.vscdb
+Database size: 98304 bytes
+Last modified: 03/22/2025 17:44:58
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_c56e97689d7a4d8cfc0f4101ac182d6b.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: c72673d7133f140b2312fd9fdb665be6 ==========
+Workspace path: file:///e%3A/Vietnam
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\c72673d7133f140b2312fd9fdb665be6\state.vscdb
+Database size: 49152 bytes
+Last modified: 03/30/2025 16:45:19
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_c72673d7133f140b2312fd9fdb665be6.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: caa4c195982dc30c9cbe7d9618aabc9b ==========
+Workspace path: 
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\caa4c195982dc30c9cbe7d9618aabc9b\state.vscdb
+Database size: 57344 bytes
+Last modified: 03/22/2025 02:35:03
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_caa4c195982dc30c9cbe7d9618aabc9b.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: e1b87d1ad3a1637c7d4ef37e744d16b3 ==========
+Workspace path: file:///c%3A/BOTS/Bot_STAFFCursorNEW
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\e1b87d1ad3a1637c7d4ef37e744d16b3\state.vscdb
+Database size: 65536 bytes
+Last modified: 03/20/2025 12:31:30
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_e1b87d1ad3a1637c7d4ef37e744d16b3.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: eab0d15e8d19be0554ad72596c5a77c3 ==========
+Workspace path: file:///c%3A/Users/Admin/OneDrive/%D0%94%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D1%8B/GitHub/OFSGlobal
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\eab0d15e8d19be0554ad72596c5a77c3\state.vscdb
+Database size: 90112 bytes
+Last modified: 04/04/2025 16:26:37
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_eab0d15e8d19be0554ad72596c5a77c3.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: efd36817cfc45d85bad712e5c51ef54d ==========
+Workspace path: file:///d%3A/BOTS/OFS
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\efd36817cfc45d85bad712e5c51ef54d\state.vscdb
+Database size: 24576 bytes
+Last modified: 03/21/2025 16:51:27
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_efd36817cfc45d85bad712e5c51ef54d.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: f11336f3c65540c94cea274c62ba1e30 ==========
+Workspace path: file:///d%3A/ZOOApp
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\f11336f3c65540c94cea274c62ba1e30\state.vscdb
+Database size: 45056 bytes
+Last modified: 04/06/2025 11:12:42
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_f11336f3c65540c94cea274c62ba1e30.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: f7119818cc7a15452b4b44d6e377080b ==========
+Workspace path: 
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\f7119818cc7a15452b4b44d6e377080b\state.vscdb
+Database size: 143360 bytes
+Last modified: 03/22/2025 17:00:34
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_f7119818cc7a15452b4b44d6e377080b.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+
+
+========== Workspace: f9504742c221f41e97253e486363c766 ==========
+Workspace path: file:///d%3A/OFS_Global
+Database path: C:\Users\Admin\AppData\Roaming\Cursor\User\workspaceStorage\f9504742c221f41e97253e486363c766\state.vscdb
+Database size: 520192 bytes
+Last modified: 03/27/2025 15:23:39
+Database copy: D:\OFS_Global\ofs_project\ofs_new\cursor_chat_f9504742c221f41e97253e486363c766.vscdb
+
+To view the content, install SQLite Browser (https://sqlitebrowser.org/) and open the file.
+Execute the following query in SQLite Browser:
+SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')

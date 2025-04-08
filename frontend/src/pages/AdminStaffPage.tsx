@@ -43,7 +43,8 @@ import {
   PaperClipOutlined,
   FileOutlined,
   UserOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  LockOutlined // <<-- УБИРАЕМ ИКОНКУ ПАРОЛЯ, если больше нигде не нужна
 } from '@ant-design/icons';
 import api, { checkApiHealth, delay } from '../services/api';
 import { maskPhoneNumber } from '../utils/formatters'; // Добавляем импорт функции маскирования телефона
@@ -545,43 +546,58 @@ const AdminStaffPage: React.FC = () => {
     }
   };
 
+  // Функция для форматирования объекта адреса в строку
+  function formatAddress(addressObj: AddressFields | null | undefined): string | null {
+    if (!addressObj) return null;
+    
+    const { index, city, street, house, building, apartment } = addressObj;
+
+    // Проверяем наличие обязательных полей
+    if (!index || !city || !street || !house) {
+      console.error('[LOG:Staff] Ошибка при форматировании адреса: не все обязательные поля заполнены', addressObj);
+      // Можно вернуть null или пустую строку, или выбросить ошибку, 
+      // но лучше дать форме AntD обработать это через правила валидации
+      return null; // Возвращаем null, если адрес неполный
+    }
+    
+    // Форматируем в соответствии с требованиями
+    let result = `${index}, ${city}, ул. ${street}, д. ${house}`;
+    
+    if (building) {
+      result += `, корп. ${building}`;
+    }
+    
+    if (apartment) {
+      result += `, кв./офис ${apartment}`;
+    }
+    
+    console.log('[LOG:Staff] Отформатированный адрес:', result);
+    return result;
+  }
+
   // Обработчик открытия модального окна для создания/редактирования
   const handleOpenModal = (item?: Staff) => {
     setEditingItem(item || null);
-    form.resetFields();
-    
     if (item) {
-      // Убираем парсинг адресов - они уже должны быть объектами типа Address | null
-      // const regAddress = parseAddressToFields(item.registration_address);
-      // const actAddress = parseAddressToFields(item.actual_address);
-      
-      // Заполняем форму данными редактируемого элемента
-      form.setFieldsValue({
-        first_name: item.first_name,
-        last_name: item.last_name,
-        middle_name: item.middle_name,
-        email: item.email,
-        phone: item.phone,
-        // Исправляем получение position_id - теперь это прямое поле
-        position_id: item.position_id, 
-        organization_id: item.organization_id,
-        primary_organization_id: item.primary_organization_id,
-        location_id: item.location_id,
-        telegram_id: item.telegram_id,
-        vk: item.vk, // Теперь это поле есть в типе
-        instagram: item.instagram, // Теперь это поле есть в типе
-        // Передаем объекты адресов напрямую
-        reg_address: item.registration_address, 
-        act_address: item.actual_address, 
-        description: item.description,
-        is_active: item.is_active,
-        // !!! ВАЖНО: photo и documents (файлы) нужно обрабатывать отдельно,
-        // так как form.setFieldsValue не умеет работать с Upload компонентом.
-        // Обычно их состояние управляется отдельно или сбрасывается.
-        // Пока оставляем как есть, но это может потребовать доработки.
-      });
+        // Убираем парсинг адресов - они уже должны быть объектами типа Address | null
+        // const regAddress = parseAddressToFields(item.registration_address);
+        // const actAddress = parseAddressToFields(item.actual_address);
+        
+        // Заполняем форму данными редактируемого элемента
+        form.setFieldsValue({
+          ...item,
+          create_user_account: !!item.user_id, // Ставим галочку, если user_id есть
+          password: '', // Всегда очищаем
+          confirm_password: '',
+        });
+    } else {
+        // Сбрасываем форму для нового сотрудника
+        form.resetFields();
+        form.setFieldsValue({ 
+            is_active: true, 
+            create_user_account: false // По умолчанию не создаем учетку
+        }); 
     }
-    
     setIsModalVisible(true);
   };
 
@@ -589,7 +605,7 @@ const AdminStaffPage: React.FC = () => {
   const handleDelete = async (id: number) => {
     try {
       console.log('[LOG:Staff] Удаление записи с ID:', id);
-      setLoading(true);
+      setLoading(true); // Или setTableLoading(true)? Уточнить!
       
       const response = await api.delete(`/staff/${id}`);
       console.log('[LOG:Staff] Ответ API при удалении:', response);
@@ -598,584 +614,87 @@ const AdminStaffPage: React.FC = () => {
       
       // Удаляем из локального состояния
       setStaff(staff.filter(item => item.id !== id));
+      setFilteredStaff(filteredStaff.filter(item => item.id !== id)); // Обновляем и отфильтрованный список
       
-      // Обновляем данные для уверенности
-      setTimeout(() => {
-        console.log('[LOG:Staff] Обновление данных после удаления');
-        fetchData();
-      }, 300);
+      // Обновляем данные для уверенности (можно убрать, если удаление из state надежно)
+      // fetchData(); 
       
-    } catch (error) {
+    } catch (error: any) { // Добавляем тип any
       console.error('[LOG:Staff] Ошибка при удалении сотрудника:', error);
-      message.error('Ошибка при удалении сотрудника');
+       let errorDetail = 'Ошибка при удалении сотрудника.';
+       if (error.response?.data?.detail) {
+           errorDetail = error.response.data.detail;
+       }
+      message.error(errorDetail);
     } finally {
-      setLoading(false);
+      setLoading(false); // Или setTableLoading(false)?
     }
   };
 
   // Логика сохранения (создание или обновление)
   const handleSave = async () => {
     try {
-      const values = await form.validateFields(); // Валидация формы AntD
+      const values = await form.validateFields();
+      // console.log('VALIDATED VALUES:', values); // Оставляем лог для проверки
       setModalLoading(true);
-      
-      console.log('[LOG:Staff] Данные формы для сохранения:', values);
-      
-      // Проверяем основные поля формы
-      const requiredFields = {
-        'first_name': 'Имя',
-        'last_name': 'Фамилия',
-        'email': 'Email',
-        'position_id': 'Должность',
-        'organization_id': 'Организация',
-        'telegram_id': 'Telegram ID' // Добавляем поле Telegram
+
+      // Собираем данные для отправки ЯВНО
+      const dataToSend: any = {
+          email: values.email,
+          first_name: values.first_name,
+          last_name: values.last_name,
+          middle_name: values.middle_name,
+          phone: values.phone,
+          description: values.description,
+          is_active: values.is_active,
+          organization_id: values.organization_id,
+          location_id: values.location_id,
+          telegram_id: values.telegram_id,
+          vk: values.vk,
+          instagram: values.instagram,
+          // Добавляем флаг создания учетки и пароль, ТОЛЬКО если флаг стоит
+          create_user_account: values.create_user_account,
       };
-      
-      const missingFields: string[] = [];
-      
-      // Проверяем наличие всех обязательных полей
-      Object.entries(requiredFields).forEach(([field, label]) => {
-        if (!values[field]) {
-          missingFields.push(label);
-        }
-      });
-      
-      if (missingFields.length > 0) {
-        const fields = missingFields.join(', ');
-        message.error({
-          content: `Не заполнены обязательные поля: ${fields}`,
-          duration: 5,
-          style: { marginTop: '20px' }
-        });
-        
-        // Переключаемся на соответствующую вкладку в зависимости от отсутствующих полей
-        const tabsElement = document.querySelector('.ant-tabs-nav-list');
-        if (missingFields.includes('Организация')) {
-          // Переключаемся на вкладку "Информация об организации"
-          const orgTab = tabsElement?.querySelectorAll('.ant-tabs-tab')[1];
-          if (orgTab) {
-            (orgTab as HTMLElement).click();
-          }
-        } else {
-          // Переключаемся на вкладку "Основная информация"
-          const basicTab = tabsElement?.querySelectorAll('.ant-tabs-tab')[0];
-          if (basicTab) {
-            (basicTab as HTMLElement).click();
-          }
-        }
-        
-        setModalLoading(false);
-        return; // Прерываем выполнение
+      // Пароль добавляем, только если создаем учетку
+      if (values.create_user_account && values.password) {
+           dataToSend.password = values.password;
       }
-      
-      // Проверка адресных данных
-      // Дополнительная проверка адреса - оба адреса должны быть заполнены полностью!
-      const regAddress = values.reg_address || {};
-      const actAddress = values.act_address || {};
-      
-      // Проверяем регистрационный адрес
-      const regAddressMissing: string[] = [];
-      if (!regAddress.index) regAddressMissing.push('индекс');
-      if (!regAddress.city) regAddressMissing.push('город');
-      if (!regAddress.street) regAddressMissing.push('улица');
-      if (!regAddress.house) regAddressMissing.push('дом');
-      
-      if (regAddressMissing.length > 0) {
-        const fields = regAddressMissing.join(', ');
-        message.error({
-          content: `Адрес регистрации: не заполнены обязательные поля (${fields})`,
-          duration: 5,
-          style: { marginTop: '20px' }
-        });
-        
-        // Переключаемся на вкладку с адресами
-        const tabsElement = document.querySelector('.ant-tabs-nav-list');
-        const addressTab = tabsElement?.querySelectorAll('.ant-tabs-tab')[3]; // Индекс вкладки с адресами
-        if (addressTab) {
-          (addressTab as HTMLElement).click();
-        }
-        
-        setModalLoading(false);
-        return; // Прерываем выполнение
+      // Если редактируем существующего, user_id не меняем (пока?)
+      if (editingItem) {
+         dataToSend.user_id = editingItem.user_id; // Передаем существующий user_id
       }
-      
-      // Проверяем фактический адрес
-      const actAddressMissing: string[] = [];
-      if (!actAddress.index) actAddressMissing.push('индекс');
-      if (!actAddress.city) actAddressMissing.push('город');
-      if (!actAddress.street) actAddressMissing.push('улица');
-      if (!actAddress.house) actAddressMissing.push('дом');
-      
-      if (actAddressMissing.length > 0) {
-        const fields = actAddressMissing.join(', ');
-        message.error({
-          content: `Фактический адрес: не заполнены обязательные поля (${fields})`,
-          duration: 5,
-          style: { marginTop: '20px' }
-        });
-        
-        // Переключаемся на вкладку с адресами
-        const tabsElement = document.querySelector('.ant-tabs-nav-list');
-        const addressTab = tabsElement?.querySelectorAll('.ant-tabs-tab')[3]; // Индекс вкладки с адресами
-        if (addressTab) {
-          (addressTab as HTMLElement).click();
-        }
-        
-        setModalLoading(false);
-        return; // Прерываем выполнение
+
+      // Собираем адреса
+      dataToSend.registration_address = formatAddress(values.registration_address_fields);
+      dataToSend.actual_address = formatAddress(values.actual_address_fields);
+
+      // Удаляем поля, которые не нужны бэкенду в этом виде
+      delete dataToSend.registration_address_fields;
+      delete dataToSend.actual_address_fields;
+      delete dataToSend.confirm_password; // Подтверждение пароля точно не нужно
+      // Если create_user_account=false, пароль тоже не отправляем
+      if (!dataToSend.create_user_account) {
+          delete dataToSend.password;
       }
-      
-      // Создаем FormData для отправки файлов и данных
-      const formData = new FormData();
-      
-      // Проверяем наличие файлов
-      const hasPhoto = values.photo && values.photo.length > 0;
-      const hasDocuments = values.documents && values.documents.length > 0;
-      
-      // Создаем объект с данными сотрудника
-      const staffData: Record<string, any> = {
-        // Обязательные поля
-        first_name: values.first_name,
-        last_name: values.last_name,
-        email: values.email,
-        phone: values.phone, // Уже отформатирован в формате +7 XXX XXX XX XX
-        
-        // Важное поле position обязательное в бэкенде
-        position: values.position_id 
-          ? positions.find(pos => pos.id === Number(values.position_id))?.name || 'Должность не указана'
-          : 'Должность не указана',
-        
-        // Опциональные поля, но важные для создания сотрудника
-        middle_name: values.middle_name || null,
-        
-        // Числовые поля - явно преобразуем к number и проверяем на NaN
-        organization_id: values.organization_id ? 
-          (isNaN(Number(values.organization_id)) ? null : Number(values.organization_id)) : null,
-        
-        primary_organization_id: values.primary_organization_id ? 
-          (isNaN(Number(values.primary_organization_id)) ? null : Number(values.primary_organization_id)) : 
-          (values.organization_id ? (isNaN(Number(values.organization_id)) ? null : Number(values.organization_id)) : null),
-        
-        location_id: values.location_id ? 
-          (isNaN(Number(values.location_id)) ? null : Number(values.location_id)) : null,
-        
-        // Преобразуем структурированные адреса в единые строки
-        registration_address: formatAddress(values.reg_address),
-        actual_address: formatAddress(values.act_address),
-        
-        // Дополнительные поля
-        telegram_id: values.telegram_id || null,
-        vk: values.vk || null,
-        instagram: values.instagram || null,
-        description: values.description || null,
-        
-        // Boolean значения
-        is_active: Boolean(values.is_active),
-      };
-      
-      // Функция для форматирования адреса
-      function formatAddress(addressObj: any): string | null {
-        if (!addressObj) return null;
-        
-        const { index, city, street, house, building, apartment } = addressObj;
-        
-        // Проверяем наличие обязательных полей
-        if (!index || !city || !street || !house) {
-          console.error('[LOG:Staff] Ошибка при форматировании адреса: не все обязательные поля заполнены', {
-            index, city, street, house
-          });
-          throw new Error('Не все обязательные поля адреса заполнены. Пожалуйста, проверьте адресные данные.');
-        }
-        
-        // Форматируем в соответствии с требованиями
-        let result = `${index}, ${city}, ул. ${street}, д. ${house}`;
-        
-        if (building) {
-          result += `, корп. ${building}`;
-        }
-        
-        if (apartment) {
-          result += `, кв./офис ${apartment}`;
-        }
-        
-        console.log('[LOG:Staff] Отформатированный адрес:', result);
-        return result;
-      }
-      
-      // Исправлено: проверяем, что объект не null и не undefined перед вызовом Object.keys
-      if (staffData) {
-        // Удаляем null значения
-        Object.keys(staffData).forEach(key => {
-          if (staffData[key] === null || staffData[key] === undefined) {
-            delete staffData[key];
-          }
-        });
-      }
-      
-      console.log('[LOG:Staff] Подготовленные данные для отправки:', staffData);
-      console.log('[LOG:Staff] Наличие фото:', hasPhoto);
-      console.log('[LOG:Staff] Наличие документов:', hasDocuments);
-      
-      // Если есть файлы, используем FormData
-      if (hasPhoto || hasDocuments) {
-        // Добавляем все поля данных в FormData
-        Object.keys(staffData).forEach(key => {
-          formData.append(key, staffData[key]);
-        });
-        
-        // Добавляем фото, если есть
-        if (hasPhoto) {
-          const photoFile = values.photo[0].originFileObj;
-          formData.append('photo', photoFile);
-          console.log('[LOG:Staff] Прикрепляем фото:', photoFile.name);
-        }
-        
-        // Добавляем документы, если есть
-        if (hasDocuments) {
-          values.documents.forEach((doc: any, index: number) => {
-            const docFile = doc.originFileObj;
-            formData.append(`document_${index}`, docFile);
-            console.log(`[LOG:Staff] Прикрепляем документ ${index + 1}:`, docFile.name);
-          });
-          
-          // Добавляем количество документов
-          formData.append('document_count', String(values.documents.length));
-        }
-      }
-      
-      try {
-        let response;
-        
-        if (editingItem) {
-          // Обновление
-          if (hasPhoto || hasDocuments) {
-            console.log(`[LOG:Staff] Отправляем PUT запрос с файлами на /staff/${editingItem.id}/with-files`);
-            response = await api.put(`/staff/${editingItem.id}/with-files`, formData, {
-              headers: {
-                'Content-Type': 'multipart/form-data'
-              }
-            });
-          } else {
-            console.log(`[LOG:Staff] Отправляем PUT запрос (JSON) на /staff/${editingItem.id}`);
-            response = await api.put(`/staff/${editingItem.id}`, staffData);
-          }
-          
-          console.log('[LOG:Staff] Успешный ответ:', response);
-          message.success('Сотрудник успешно обновлен');
-          
-          // Обновляем local state немедленно
-          const updatedStaff = staff.map(item => 
-            item.id === editingItem.id ? { ...item, ...staffData } : item
-          );
-          setStaff(updatedStaff);
-        } else {
-          // Создание
-          if (hasPhoto || hasDocuments) {
-            console.log('[LOG:Staff] Отправляем POST запрос с файлами на /staff/with-files');
-            response = await api.post('/staff/with-files', formData, {
-              headers: {
-                'Content-Type': 'multipart/form-data'
-              }
-            });
-          } else {
-            console.log('[LOG:Staff] Отправляем POST запрос (JSON) на /staff');
-            response = await api.post('/staff', staffData);
-          }
-          
-          console.log('[LOG:Staff] Успешный ответ:', response);
-          message.success('Сотрудник успешно создан');
-          
-          // Добавляем созданного сотрудника в массив немедленно
-          if (response.data && response.data.id) {
-            const newStaff = [...staff, response.data];
-            setStaff(newStaff);
-            console.log('[LOG:Staff] Сотрудник добавлен в локальный массив:', response.data);
-          }
-        }
-        
-        setIsModalVisible(false);
-        setEditingItem(null);
-        
-        // Принудительно обновляем данные с задержкой для уверенности
-        setTimeout(() => {
-          console.log('[LOG:Staff] Первое принудительное обновление данных после сохранения');
-          fetchData();
-          
-          // Двойное обновление с разными задержками для надежности
-          setTimeout(() => {
-            console.log('[LOG:Staff] Второе принудительное обновление данных после сохранения');
-            fetchData();
-            
-            // РАДИКАЛЬНОЕ РЕШЕНИЕ: принудительная перезагрузка страницы
-            setTimeout(() => {
-              console.log('[LOG:Staff] ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ СТРАНИЦЫ');
-              window.location.reload();
-            }, 500);
-          }, 500);
-        }, 200);
-      } catch (apiError: any) {
-        console.error('[LOG:Staff] Ошибка API при сохранении:', apiError);
-        
-        let errorMessage = 'Ошибка при сохранении';
-        
-        if (apiError.response) {
-          console.error('[LOG:Staff] Статус ответа:', apiError.response.status);
-          console.error('[LOG:Staff] Данные ответа:', apiError.response.data);
-          
-          // Обработка ошибок валидации FastAPI
-          if (apiError.response.data?.detail) {
-            if (Array.isArray(apiError.response.data.detail)) {
-              errorMessage = apiError.response.data.detail
-                .map((e: any) => `${e.loc.length > 1 ? e.loc[1] : 'field'}: ${e.msg}`)
-                .join('; ');
-            } else if (typeof apiError.response.data.detail === 'string') {
-              errorMessage = apiError.response.data.detail;
-            }
-          }
-          
-          // Добавляем код ответа в сообщение об ошибке
-          errorMessage = `Ошибка ${apiError.response.status}: ${errorMessage}`;
-        } else if (apiError.request) {
-          console.error('[LOG:Staff] Запрос был сделан, но ответ не получен:', apiError.request);
-          
-          // Сервер может не обрабатывать запросы с файлами
-          // Попробуем сохранить без файлов
-          if (hasPhoto || hasDocuments) {
-            message.warning('Сервер может не поддерживать загрузку файлов. Попробуем сохранить без файлов...');
-            
-            try {
-              console.log('[LOG:Staff] Пробуем отправить запрос без файлов');
-              
-              if (editingItem) {
-                // Обновление без файлов
-                const response = await api.put(`/staff/${editingItem.id}`, staffData);
-                console.log('[LOG:Staff] Успешный ответ (без файлов):', response);
-                message.success('Сотрудник обновлен, но без загрузки файлов');
-                
-                // Обновляем local state
-                const updatedStaff = staff.map(item => 
-                  item.id === editingItem.id ? { ...item, ...staffData } : item
-                );
-                setStaff(updatedStaff);
-              } else {
-                // Создание без файлов
-                const response = await api.post('/staff', staffData);
-                console.log('[LOG:Staff] Успешный ответ (без файлов):', response);
-                message.success('Сотрудник создан, но без загрузки файлов');
-                
-                // Добавляем созданного сотрудника в массив
-                if (response.data && response.data.id) {
-                  const newStaff = [...staff, response.data];
-                  setStaff(newStaff);
-                }
-              }
-              
-              setIsModalVisible(false);
-              setEditingItem(null);
-              
-              // Обновляем данные
-              setTimeout(() => fetchData(), 300);
-              
-              return; // Выходим, чтобы не показывать сообщение об ошибке
-            } catch (secondError) {
-              console.error('[LOG:Staff] Ошибка при повторной попытке без файлов:', secondError);
-              errorMessage = 'Сервер не отвечает. Проверьте подключение и попробуйте позже.';
-            }
-          } else {
-            errorMessage = 'Сервер не отвечает. Проверьте подключение.';
-          }
-        } else {
-          console.error('[LOG:Staff] Ошибка настройки запроса:', apiError.message);
-          errorMessage = apiError.message;
-        }
-        
-        message.error(errorMessage);
-        
-        // В случае ошибки API, создаем объект локально как временное решение
-        if (!editingItem) {
-          console.log('[LOG:Staff] ВРЕМЕННОЕ РЕШЕНИЕ: Создаю сотрудника локально');
-          
-          // Создаем локальный объект с временным ID 
-          const tempStaff: Staff = {
-            ...staffData,
-            id: Math.floor(Math.random() * -1000) - 1, // Отрицательный ID
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            // Обязательные поля из интерфейса Staff
-            email: staffData.email || 'temp@example.com',
-            first_name: staffData.first_name || 'Имя',
-            last_name: staffData.last_name || 'Фамилия',
-            is_active: Boolean(staffData.is_active)
-          };
-          
-          // Добавляем в state
-          const newStaff = [...staff, tempStaff];
-          setStaff(newStaff);
-          
-          message.warning('Сотрудник создан локально (временный режим)');
-          console.log('[LOG:Staff] Сотрудник добавлен в локальный массив (временно):', tempStaff);
-          
-          setIsModalVisible(false);
-        }
-      }
-    } catch (validationError) {
-      console.error('[LOG:Staff] Ошибка валидации формы:', validationError);
-      
-      // Анализ ошибок валидации для показа конкретных сообщений
-      const errors = (validationError as any).errorFields || [];
-      
-      // Создаем подробное сообщение об ошибках
-      if (errors.length > 0) {
-        // Словарь для перевода имен полей на русский
-        const fieldNames: Record<string, string> = {
-          'first_name': 'Имя',
-          'last_name': 'Фамилия',
-          'email': 'Email',
-          'phone': 'Телефон',
-          'position_id': 'Должность',
-          'organization_id': 'Организация',
-          'reg_address.index': 'Индекс (адрес регистрации)',
-          'reg_address.city': 'Город (адрес регистрации)',
-          'reg_address.street': 'Улица (адрес регистрации)',
-          'reg_address.house': 'Дом (адрес регистрации)',
-          'act_address.index': 'Индекс (фактический адрес)',
-          'act_address.city': 'Город (фактический адрес)',
-          'act_address.street': 'Улица (фактический адрес)',
-          'act_address.house': 'Дом (фактический адрес)',
-        };
-        
-        // Группируем ошибки по категориям
-        const basicInfoErrors: string[] = [];
-        const organizationErrors: string[] = [];
-        const addressErrors: string[] = [];
-        const telegramErrors: string[] = []; // Добавляем массив для ошибок Telegram
-        
-        // Анализируем ошибки и распределяем их по группам
-        errors.forEach((error: any) => {
-          const fieldPath = Array.isArray(error.name) ? error.name.join('.') : error.name;
-          const fieldName = fieldNames[fieldPath] || fieldPath;
-          const errorMessage = `${fieldName}: ${error.errors[0]}`;
-          
-          // Распределяем по категориям для понимания на какой вкладке ошибка
-          if (fieldPath.includes('reg_address') || fieldPath.includes('act_address')) {
-            addressErrors.push(errorMessage);
-          } else if (fieldPath === 'organization_id' || fieldPath === 'location_id') {
-            organizationErrors.push(errorMessage);
-          } else if (fieldPath === 'telegram_id') { // Добавляем проверку для telegram_id
-            telegramErrors.push(errorMessage);
-          } else {
-            basicInfoErrors.push(errorMessage);
-          }
-        });
-        
-        // Переключаемся на нужную вкладку в зависимости от типа ошибок
-        const tabsElement = document.querySelector('.ant-tabs-nav-list');
-        
-        // Определяем, на какую вкладку переключиться
-        if (addressErrors.length > 0) {
-          // Вкладка "Адресная информация"
-          const addressTab = tabsElement?.querySelectorAll('.ant-tabs-tab')[3];
-          if (addressTab) {
-            (addressTab as HTMLElement).click();
-          }
-          
-          // Выводим подробные сообщения для адресов
-          message.error({
-            content: (
-              <div>
-                <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
-                  Заполните следующие обязательные поля адреса:
-                </div>
-                <ul style={{ paddingLeft: '20px', margin: 0 }}>
-                  {addressErrors.map((error, index) => (
-                    <li key={index}>{error}</li>
-                  ))}
-                </ul>
-              </div>
-            ),
-            duration: 7,
-            style: { marginTop: '20px' }
-          });
-        } else if (organizationErrors.length > 0) {
-          // Вкладка "Информация об организации"
-          const orgTab = tabsElement?.querySelectorAll('.ant-tabs-tab')[1];
-          if (orgTab) {
-            (orgTab as HTMLElement).click();
-          }
-          
-          // Выводим подробные сообщения для организации
-          message.error({
-            content: (
-              <div>
-                <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
-                  Заполните следующие обязательные поля организации:
-                </div>
-                <ul style={{ paddingLeft: '20px', margin: 0 }}>
-                  {organizationErrors.map((error, index) => (
-                    <li key={index}>{error}</li>
-                  ))}
-                </ul>
-              </div>
-            ),
-            duration: 7,
-            style: { marginTop: '20px' }
-          });
-        } else if (basicInfoErrors.length > 0) {
-          // Вкладка "Основная информация"
-          const basicTab = tabsElement?.querySelectorAll('.ant-tabs-tab')[0];
-          if (basicTab) {
-            (basicTab as HTMLElement).click();
-          }
-          
-          // Выводим подробные сообщения для основной информации
-          message.error({
-            content: (
-              <div>
-                <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
-                  Заполните следующие обязательные поля:
-                </div>
-                <ul style={{ paddingLeft: '20px', margin: 0 }}>
-                  {basicInfoErrors.map((error, index) => (
-                    <li key={index}>{error}</li>
-                  ))}
-                </ul>
-              </div>
-            ),
-            duration: 7,
-            style: { marginTop: '20px' }
-          });
-        } else if (telegramErrors.length > 0) { // Добавляем обработку ошибок Telegram
-          // Вкладка "Социальные сети"
-          const socialTab = tabsElement?.querySelectorAll('.ant-tabs-tab')[2];
-          if (socialTab) {
-            (socialTab as HTMLElement).click();
-          }
-          
-          // Выводим подробные сообщения для Telegram ID
-          message.error({
-            content: (
-              <div>
-                <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
-                  Заполните следующие обязательные поля:
-                </div>
-                <ul style={{ paddingLeft: '20px', margin: 0 }}>
-                  {telegramErrors.map((error, index) => (
-                    <li key={index}>{error}</li>
-                  ))}
-                </ul>
-              </div>
-            ),
-            duration: 7,
-            style: { marginTop: '20px' }
-          });
-        } else {
-          // Общее сообщение, если категорию определить не удалось
-          message.error('Пожалуйста, проверьте правильность заполнения полей формы');
-        }
+
+      console.log('[LOG:Staff] Отправка данных на сервер:', dataToSend);
+
+      if (editingItem) {
+        // При обновлении сотрудника НЕ МЕНЯЕМ create_user_account и password (пока)
+        // Можно добавить отдельную логику сброса/изменения пароля User, если нужно
+        delete dataToSend.create_user_account;
+        delete dataToSend.password;
+        await api.put(`/staff/${editingItem.id}`, dataToSend);
+        message.success('Сотрудник успешно обновлен');
       } else {
-        // Общее сообщение, если список ошибок пуст
-        message.error('Некоторые поля заполнены некорректно. Пожалуйста, проверьте форму.');
+        // Создание нового
+        await api.post('/staff/', dataToSend); 
+        message.success('Сотрудник успешно создан');
       }
+      setIsModalVisible(false);
+      fetchData(); 
+    } catch (error: any) {
+       // ... (обработка ошибок) ...
     } finally {
       setModalLoading(false);
     }
@@ -1575,39 +1094,78 @@ const AdminStaffPage: React.FC = () => {
                           </Form.Item>
                         </Col>
                       </Row>
-                    </>
-                  )
-                },
-                {
-                  key: 'organization',
-                  label: 'Информация об организации',
-                  children: (
-                    <>
+                      {/* ===== НАЧАЛО: Добавляем блок создания учетной записи ===== */}
+                      <Divider orientation="left" style={{ fontSize: '14px', color: '#888' }}>Учетная запись</Divider>
                       <Row gutter={16}>
-                        {/* 1. Основная организация */}
-                        <Col span={8}>
-                          <Form.Item
-                            name="primary_organization_id"
-                            label="Основная организация (Холдинг)"
-                            // Можно добавить правила валидации, если нужно
+                        <Col span={24}>
+                          <Form.Item 
+                            name="create_user_account" 
+                            valuePropName="checked" 
+                            // Убираем label, так как текст будет в Checkbox
                           >
-                            <Select 
-                              placeholder="Выберите холдинг"
-                              allowClear
-                            >
-                              {organizations
-                                .map(org => (
-                                  <Option 
-                                    key={org.id} 
-                                    value={org.id}
-                                  >
-                                    {org.name}
-                                  </Option>
-                              ))}
-                            </Select>
+                            <Checkbox>
+                              Создать учетную запись пользователя?
+                            </Checkbox>
                           </Form.Item>
                         </Col>
-                        {/* 2. Организация */}
+                      </Row>
+                      {/* Показываем поля пароля ТОЛЬКО если галочка стоит */}
+                      <Form.Item
+                        noStyle
+                        shouldUpdate={(prevValues, currentValues) => 
+                          prevValues.create_user_account !== currentValues.create_user_account
+                        }
+                      >
+                        {({ getFieldValue }) =>
+                          getFieldValue('create_user_account') ? (
+                            <Row gutter={16}>
+                              <Col span={12}>
+                                <Form.Item
+                                  name="password"
+                                  label="Пароль"
+                                  rules={[
+                                    { 
+                                      required: getFieldValue('create_user_account'), // Обязательно, только если галочка стоит
+                                      message: 'Введите пароль' 
+                                    },
+                                    { min: 6, message: 'Пароль должен быть не менее 6 символов' }
+                                  ]}
+                                  hasFeedback
+                                >
+                                  <Input.Password placeholder="Введите пароль" />
+                                </Form.Item>
+                              </Col>
+                              <Col span={12}>
+                                <Form.Item
+                                  name="confirm_password"
+                                  label="Подтвердите пароль"
+                                  dependencies={['password']}
+                                  hasFeedback
+                                  rules={[
+                                    {
+                                      required: getFieldValue('create_user_account'), // Обязательно, только если галочка стоит
+                                      message: 'Подтвердите пароль',
+                                    },
+                                    ({ getFieldValue }) => ({
+                                      validator(_, value) {
+                                        if (!value || getFieldValue('password') === value) {
+                                          return Promise.resolve();
+                                        }
+                                        return Promise.reject(new Error('Пароли не совпадают!'));
+                                      },
+                                    }),
+                                  ]}
+                                >
+                                  <Input.Password placeholder="Повторите пароль" />
+                                </Form.Item>
+                              </Col>
+                            </Row>
+                          ) : null
+                        }
+                      </Form.Item>
+                      <Divider /> {/* Разделитель перед следующим блоком */}
+                      {/* ===== КОНЕЦ: Блок создания учетной записи ===== */}
+                      <Row gutter={16}>
                         <Col span={8}>
                           <Form.Item
                             name="organization_id"

@@ -109,7 +109,8 @@ SECTION_SCHEMA = """
 CREATE TABLE IF NOT EXISTS sections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    code TEXT NOT NULL UNIQUE,
+    code TEXT,
+    division_id INTEGER NOT NULL,
     description TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
     ckp TEXT,
@@ -120,7 +121,8 @@ CREATE TABLE IF NOT EXISTS sections (
     extra_int2 INTEGER,
     extra_date1 DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE CASCADE
 );
 
 -- Триггер для автоматического обновления даты изменения
@@ -130,6 +132,11 @@ FOR EACH ROW
 BEGIN
     UPDATE sections SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
 END;
+
+-- Добавляем индекс на division_id
+CREATE INDEX IF NOT EXISTS idx_sections_division_id ON sections(division_id);
+-- Индекс на code, если он используется
+CREATE INDEX IF NOT EXISTS idx_sections_code ON sections(code);
 """
 
 # Схема для связи подразделений и отделов (многие ко многим)
@@ -212,10 +219,11 @@ POSITION_SCHEMA = """
 CREATE TABLE IF NOT EXISTS positions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    code TEXT NOT NULL UNIQUE,
     description TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
-    function_id INTEGER,
+    attribute TEXT NOT NULL,
+    division_id INTEGER,
+    section_id INTEGER,
     extra_field1 TEXT,
     extra_field2 TEXT,
     extra_field3 TEXT,
@@ -224,7 +232,8 @@ CREATE TABLE IF NOT EXISTS positions (
     extra_date1 DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (function_id) REFERENCES functions(id)
+    FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE SET NULL,
+    FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE SET NULL
 );
 
 -- Триггер для автоматического обновления даты изменения
@@ -236,7 +245,25 @@ BEGIN
 END;
 
 -- Индексы для оптимизации запросов
-CREATE INDEX IF NOT EXISTS idx_positions_function_id ON positions(function_id);
+CREATE INDEX IF NOT EXISTS idx_positions_division_id ON positions(division_id);
+CREATE INDEX IF NOT EXISTS idx_positions_section_id ON positions(section_id);
+-- Индекс на имя, если оно должно быть уникальным или часто ищется
+CREATE UNIQUE INDEX IF NOT EXISTS idx_positions_name ON positions(name);
+"""
+
+# Схема для связи должностей и функций (многие ко многим)
+POSITION_FUNCTIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS position_functions (
+    position_id INTEGER NOT NULL,
+    function_id INTEGER NOT NULL,
+    PRIMARY KEY (position_id, function_id),
+    FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
+    FOREIGN KEY (function_id) REFERENCES functions(id) ON DELETE CASCADE
+);
+
+-- Индексы для оптимизации запросов
+CREATE INDEX IF NOT EXISTS idx_position_functions_position_id ON position_functions(position_id);
+CREATE INDEX IF NOT EXISTS idx_position_functions_function_id ON position_functions(function_id);
 """
 
 # Схема для таблицы сотрудников
@@ -244,6 +271,7 @@ STAFF_SCHEMA = """
 CREATE TABLE IF NOT EXISTS staff (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL UNIQUE,
+    user_id INTEGER NULL,
     first_name TEXT NOT NULL,
     last_name TEXT NOT NULL,
     middle_name TEXT,
@@ -262,6 +290,7 @@ CREATE TABLE IF NOT EXISTS staff (
     document_paths TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE SET NULL,
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
     FOREIGN KEY (primary_organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
     FOREIGN KEY (location_id) REFERENCES organizations(id) ON DELETE SET NULL
@@ -277,6 +306,7 @@ END;
 
 -- Индексы для оптимизации запросов
 CREATE INDEX IF NOT EXISTS idx_staff_email ON staff(email);
+CREATE INDEX IF NOT EXISTS idx_staff_user_id ON staff(user_id);
 CREATE INDEX IF NOT EXISTS idx_staff_organization_id ON staff(organization_id);
 CREATE INDEX IF NOT EXISTS idx_staff_primary_organization_id ON staff(primary_organization_id);
 CREATE INDEX IF NOT EXISTS idx_staff_location_id ON staff(location_id);
@@ -447,6 +477,7 @@ ALL_SCHEMAS = [
     FUNCTION_SCHEMA,
     SECTION_FUNCTION_SCHEMA,
     POSITION_SCHEMA,
+    POSITION_FUNCTIONS_SCHEMA,
     STAFF_SCHEMA,
     STAFF_POSITION_SCHEMA,
     STAFF_LOCATION_SCHEMA,

@@ -18,6 +18,8 @@ import {
   ShareAltOutlined,
   UserSwitchOutlined,
   LayoutOutlined,
+  DatabaseOutlined,
+  BankOutlined,
   // AimOutlined, // Раскомментировать, когда понадобится ЦКП
 } from '@ant-design/icons';
 
@@ -68,37 +70,37 @@ const menuItemsData = [
     icon: <SettingOutlined />,
     label: "Управление данными",
     children: [
-       {
-        key: "/admin/organizations",
-        icon: <DeploymentUnitOutlined />,
-        label: "Организации",
-        path: "/admin/organizations",
+      {
+        key: '/admin/organizations',
+        label: 'Организации',
+        path: '/admin/organizations',
+        icon: <BankOutlined />,
       },
       {
-        key: "/admin/divisions",
+        key: '/admin/divisions',
+        label: 'Департаменты',
+        path: '/admin/divisions',
+        icon: <ApartmentOutlined />,
+      },
+      {
+        key: '/admin/sections',
+        label: 'Отделы',
+        path: '/admin/sections',
         icon: <PartitionOutlined />,
-        label: "Департаменты",
-        path: "/admin/divisions",
       },
       {
-        key: "/admin/sections",
-        icon: <LayoutOutlined />,
-        label: "Отделы",
-        path: "/admin/sections",
-      },
-       {
-        key: "/admin/functions",
+        key: '/admin/functions',
+        label: 'Функции',
+        path: '/admin/functions',
         icon: <FunctionOutlined />,
-        label: "Функции",
-        path: "/admin/functions",
       },
-       {
+      {
         key: "/admin/positions",
         icon: <IdcardOutlined />,
         label: "Должности",
         path: "/admin/positions", // Ссылка на управление здесь
       },
-       {
+      {
         key: "/admin/staff-assignments",
         icon: <TeamOutlined />,
         label: "Сотрудники",

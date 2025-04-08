@@ -1,100 +1,103 @@
-# OFS Global
+# Утилита извлечения истории чатов Cursor
 
-Система управления организационной структурой предприятия OFS Global.
+Набор скриптов для извлечения истории чатов из Cursor IDE.
 
-## Структура проекта
+## Описание
 
-Проект организован как монорепозиторий со следующей структурой:
+Данная утилита позволяет извлечь историю чатов из Cursor IDE, которая хранится в SQLite базах данных в папке `%APPDATA%\Cursor\User\workspaceStorage`. Утилита предоставляет несколько методов извлечения, использующих разные подходы, что повышает шансы успешного извлечения данных в разных конфигурациях систем.
 
-- `backend/` - Backend API на FastAPI
-- `frontend/` - Frontend SPA на React
-- `docs/` - Документация
-- `deployment/` - Скрипты и конфигурации для деплоя
+## Системные требования
 
-## Запуск проекта
+- Windows 7/8/10/11
+- PowerShell 5.0+
+- Python 3.6+ (опционально)
+- SQLite (опционально)
 
-### Требования
+## Содержимое
 
-- Python 3.9+
-- Node.js 16+
-- PostgreSQL 13+
+В комплект входят следующие файлы:
 
-### Backend
+1. `extract_all_cursor_chats.bat` - основной скрипт для запуска всех методов извлечения
+2. `extract_cursor_chats.ps1` - PowerShell скрипт, загружающий SQLite и извлекающий данные
+3. `extract_cursor_chats_dotnet.ps1` - PowerShell скрипт, использующий .NET для работы с SQLite
+4. `extract_cursor_chats_simple.ps1` - простой PowerShell скрипт для копирования баз данных
+5. `extract_cursor_chats_python.py` - Python скрипт для извлечения данных с помощью модуля sqlite3
 
-1. Перейдите в директорию backend:
+## Как использовать
 
-```bash
-cd backend
+### Метод 1: Запуск всех скриптов сразу
+
+1. Запустите файл `extract_all_cursor_chats.bat` от имени администратора
+2. Дождитесь завершения всех скриптов
+3. Проверьте созданные текстовые файлы с результатами
+
+### Метод 2: Запуск отдельных скриптов
+
+Вы можете запустить отдельные скрипты в зависимости от ваших предпочтений:
+
+- `extract_cursor_chats.ps1` - основной метод, скачивает SQLite и извлекает данные
+- `extract_cursor_chats_dotnet.ps1` - метод с использованием .NET библиотек
+- `extract_cursor_chats_simple.ps1` - простой метод, только копирует базы данных
+- `extract_cursor_chats_python.py` - метод с использованием Python
+
+#### Для запуска PowerShell скриптов:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File имя_скрипта.ps1
 ```
 
-2. Установите зависимости:
+#### Для запуска Python скрипта:
 
-```bash
-pip install -r requirements.txt
+```cmd
+python extract_cursor_chats_python.py
 ```
 
-3. Настройте переменные окружения (создайте файл `.env` на основе `.env.example`).
+## Результаты
 
-4. Запустите миграции:
+После выполнения скриптов будут созданы следующие файлы:
 
-```bash
-alembic upgrade head
-```
+- `cursor_chats_history.txt` - результат основного метода
+- `cursor_chats_dotnet.txt` - результат метода .NET
+- `cursor_chats_info.txt` - результат простого метода
+- `cursor_chats_python.txt` - результат Python метода
+- `cursor_chat_*.vscdb` - копии баз данных Cursor
 
-5. Запустите сервер:
+## Ручной метод (если автоматические методы не работают)
 
-```bash
-python run.py
-```
+Если автоматические методы не работают, вы можете извлечь данные вручную:
 
-Backend API будет доступен по адресу: http://localhost:8000
+1. Установите SQLite Browser с сайта https://sqlitebrowser.org/
+2. Откройте файлы `cursor_chat_*.vscdb` с помощью SQLite Browser
+3. Перейдите на вкладку "Execute SQL"
+4. Выполните запрос:
+   ```sql
+   SELECT rowid, [key], value FROM ItemTable WHERE [key] IN ('aiService.prompts', 'workbench.panel.aichat.view.aichat.chatdata')
+   ```
+5. В результатах найдите строки со столбцом 'key' равным 'workbench.panel.aichat.view.aichat.chatdata'
+6. Значение в столбце 'value' - это JSON с историей чатов
 
-### Frontend
+## Настройка
 
-1. Перейдите в директорию frontend:
+По умолчанию скрипты ищут историю чатов в папке `C:/Users/Admin/AppData/Roaming/Cursor/User/workspaceStorage`. Если ваш путь отличается, отредактируйте следующие файлы:
 
-```bash
-cd frontend
-```
+- `extract_cursor_chats.ps1` - переменная `$workspaceStoragePath`
+- `extract_cursor_chats_dotnet.ps1` - переменная `$workspaceStoragePath`
+- `extract_cursor_chats_simple.ps1` - переменная `$workspaceStoragePath`
+- `extract_cursor_chats_python.py` - переменная `workspace_storage_path`
 
-2. Установите зависимости:
+## Примечания
 
-```bash
-npm install
-```
+- Скрипты создают временные копии баз данных для безопасной работы с ними
+- Результаты сохраняются в текстовые файлы в кодировке UTF-8
+- Если у вас нет прав администратора, возможно, потребуется запустить скрипты от имени администратора
 
-3. Запустите сервер разработки:
+## Безопасность
 
-```bash
-npm run dev
-```
+- Скрипты не отправляют данные в интернет
+- Скрипты не изменяют оригинальные файлы Cursor
+- Все операции производятся с копиями баз данных
 
-Frontend будет доступен по адресу: http://localhost:3000
+## Автор
 
-## Документация API
-
-API-документация доступна по адресу: http://localhost:8000/docs
-
-## Разработка
-
-### Backend
-
-- Backend использует FastAPI и асинхронные конечные точки
-- Модели данных определены в `app/models/`
-- API эндпоинты находятся в `app/api/`
-- Сервисы для бизнес-логики в `app/services/`
-
-### Frontend
-
-- Frontend использует React с TypeScript
-- Компоненты находятся в `src/components/`
-- Страницы в `src/pages/`
-- API-клиент в `src/services/`
-
-## Архитектура
-
-Проект реализует гибридную модель организационной структуры, включающую:
-
-- Иерархическую структуру организации (Основатели → Директора → Департаменты → Подразделения → Функции → Должности → Сотрудники)
-- Локации как географические единицы с собственной упрощенной структурой
-- Перекрестные отчетные отношения (функциональные, административные, территориальные) 
+- AI-помощник
+- Дата: 06.04.2025 

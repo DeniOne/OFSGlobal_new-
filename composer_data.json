@@ -1,0 +1,27 @@
+{
+  "allComposers": [
+    {
+      "type": "head",
+      "composerId": "8993fc41-c9d6-491c-a568-c20f774daeb1",
+      "name": "Индексация файлов и запуск программы",
+      "lastUpdatedAt": 1743852710685,
+      "createdAt": 1743851433515,
+      "unifiedMode": "agent",
+      "forceMode": "edit"
+    },
+    {
+      "type": "head",
+      "composerId": "5a73ad76-43ba-4c6c-8707-d664dd5a1c1c",
+      "createdAt": 1743851433516,
+      "unifiedMode": "chat",
+      "forceMode": "edit"
+    }
+  ],
+  "selectedComposerIds": [
+    "8993fc41-c9d6-491c-a568-c20f774daeb1"
+  ],
+  "hasMigratedChatData": false,
+  "hasMigratedUseAutoContext": true,
+  "hasMigratedComposerData": false,
+  "hasMigratedMultipleComposers": true
+}

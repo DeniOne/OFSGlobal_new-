@@ -12,7 +12,8 @@ import {
   Popconfirm, // Для подтверждения удаления
   Spin, // Общий спиннер
   Card,
-  Checkbox // Добавляем Checkbox для is_active
+  Checkbox, // Добавляем Checkbox для is_active
+  Tooltip // Добавляем Tooltip для подсказки
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { 
@@ -37,6 +38,7 @@ interface Organization {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  org_type: string;
 }
 
 const { Title } = Typography;
@@ -124,7 +126,8 @@ const AdminOrganizationsPage: React.FC = () => {
       code: values.code?.trim(),
       legal_name: values.legal_name?.trim() || null,
       ckp: values.ckp?.trim() || null,
-      is_active: Boolean(values.is_active)
+      is_active: Boolean(values.is_active),
+      org_type: values.org_type
     };
     console.log('📦 Данные для отправки:', dataToSend);
     
@@ -199,6 +202,12 @@ const AdminOrganizationsPage: React.FC = () => {
       ],
       onFilter: (value, record) => record.is_active === value,
       width: 100,
+    },
+    {
+      title: 'Тип организации',
+      dataIndex: 'org_type',
+      key: 'org_type',
+      render: (orgType) => orgType || '—',
     },
     {
       title: 'Действия',
@@ -314,6 +323,19 @@ const AdminOrganizationsPage: React.FC = () => {
               label="Статус"
             >
               <Checkbox>Активна</Checkbox>
+            </Form.Item>
+            
+            <Form.Item
+              name="org_type"
+              label="Тип организации"
+              rules={[{ required: true, message: 'Выберите тип организации' }]}
+            >
+              <Select placeholder="Выберите тип">
+                <Select.Option value="board">Совет учредителей</Select.Option>
+                <Select.Option value="holding">Холдинг/головная компания</Select.Option>
+                <Select.Option value="legal_entity">Юр. лицо (ИП, ООО и т.д.)</Select.Option>
+                <Select.Option value="location">Физическая локация/филиал</Select.Option>
+              </Select>
             </Form.Item>
             
           </Form>

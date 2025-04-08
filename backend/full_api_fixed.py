@@ -2,7 +2,7 @@ import sqlite3
 import os
 import traceback  # Добавляем модуль для печати стека вызовов
 import logging    # Добавляем логирование
-from fastapi import FastAPI, HTTPException, Depends, Request, APIRouter, File, UploadFile, Form, status, Query, Response # <--- Добавляем Body и Response
+from fastapi import FastAPI, HTTPException, Depends, Request, APIRouter, File, UploadFile, Form, status, Query # <--- Добавляем Body
 from fastapi.middleware.cors import CORSMiddleware  # Импортируем CORS middleware
 from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional, Dict, Any, Union
@@ -91,17 +91,6 @@ def startup_event():
     logger.info("Инициализация базы данных завершена.")
 
 # ================== МОДЕЛИ PYDANTIC ==================
-
-# <<-- ОБНОВЛЕНИЕ ENUM PositionAttribute -->>
-class PositionAttribute(str, Enum):
-    """Атрибуты должностей (уровень доступа/важности)"""
-    BOARD = "Совет Учредителей" # Твой "Главный управляющий орган"
-    TOP_MANAGEMENT = "Высшее Руководство (Генеральный Директор)" # Твой "Высший управляющий орган"
-    DIRECTOR = "Директор Направления" # Твой "Высокий управляющий орган"
-    DEPARTMENT_HEAD = "Руководитель Департамента" # Твой "Старший управляющий орган"
-    SECTION_HEAD = "Руководитель Отдела" # Твой "Управляющий орган"
-    SPECIALIST = "Специалист" # Твой "Элемент"
-# <<-- КОНЕЦ ОБНОВЛЕНИЯ ENUM PositionAttribute -->>
 
 class OrgType(str, Enum):
     """Типы организационных структур"""
@@ -247,61 +236,66 @@ class SectionFunction(SectionFunctionBase):
 # Модели для Position (Должность)
 class PositionBase(BaseModel):
     name: str
+    code: str
     description: Optional[str] = None
     is_active: bool = True
-    attribute: PositionAttribute
-    division_id: Optional[int] = None
-    section_id: Optional[int] = None
+    function_id: Optional[int] = None  # Связь с функцией
 
 class PositionCreate(PositionBase):
-    function_ids: List[int] = []
+    pass
 
 class Position(PositionBase):
     id: int
-    functions: List[Function] = []
     created_at: datetime
     updated_at: datetime
-
+    
     class Config:
         from_attributes = True
-        use_enum_values = True
+
+# Модели для Position_Function (Связь должности и функции)
+class PositionFunctionBase(BaseModel):
+    position_id: int
+    function_id: int
+    is_primary: bool = True
+
+class PositionFunctionCreate(PositionFunctionBase):
+    pass
+
+class PositionFunction(PositionFunctionBase):
+    id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 # Модели для Staff (Сотрудник)
 class StaffBase(BaseModel):
     email: EmailStr
-    user_id: Optional[int] = None # <<-- ДОБАВЛЕНО: Связь с User
     first_name: str
     last_name: str
     middle_name: Optional[str] = None
     phone: Optional[str] = None
     description: Optional[str] = None
     is_active: bool = True
-    organization_id: Optional[int] = None
-    primary_organization_id: Optional[int] = None
-    location_id: Optional[int] = None
-    registration_address: Optional[str] = None
-    actual_address: Optional[str] = None
-    telegram_id: Optional[str] = None
-    vk: Optional[str] = None
-    instagram: Optional[str] = None
-    photo_path: Optional[str] = None
-    document_paths: Optional[str] = None # Рассмотреть List[str], если храним как JSON
+    organization_id: Optional[int] = None  # Юридическое лицо (опционально)
+    primary_organization_id: Optional[int] = None  # Основное юридическое лицо сотрудника
+    telegram_id: Optional[str] = None  # Telegram ID (сохраняется в extra_field1)
+    registration_address: Optional[str] = None  # Адрес регистрации (сохраняется в description)
+    actual_address: Optional[str] = None  # Фактический адрес (сохраняется в extra_int1 в виде строки)
+    vk: Optional[str] = None  # Профиль ВКонтакте (сохраняется в extra_field2)
+    instagram: Optional[str] = None  # Профиль Instagram (сохраняется в extra_field3)
+    location_id: Optional[int] = None  # ID локации (физического местонахождения)
+    photo_path: Optional[str] = None  # Путь к файлу фотографии
+    document_paths: Optional[List[str]] = None # Список путей к документам (хранится как JSON)
 
 class StaffCreate(StaffBase):
-    # password: str # <<-- УДАЛЕНО
-    # Добавим поле для галочки "Создать учетную запись"
-    create_user_account: bool = False
-    # Пароль нужен, только если создаем учетную запись
-    password: Optional[str] = None 
     pass
 
 class Staff(StaffBase):
     id: int
     created_at: datetime
     updated_at: datetime
-    # Можно добавить информацию о связанных должностях, если нужно
-    # positions: List[StaffPositionInfo] = [] # Пример
-
+    
     class Config:
         from_attributes = True
 
@@ -490,7 +484,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 async def get_user_from_db(db: sqlite3.Connection, email: str) -> Optional[UserInDBBase]:
     """Вспомогательная функция для получения пользователя из БД по email."""
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM user WHERE email = ?", (email,))
+    cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
     user_data = cursor.fetchone()
     if user_data:
         return UserInDBBase.model_validate(dict(user_data))
@@ -529,45 +523,228 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
 
 # Инициализация базы данных, если она не существует
 def init_db():
-    """Инициализация базы данных с использованием схем из complete_schema.py."""
-    logger.info("Начало инициализации БД...")
-    conn = None # Инициализируем conn
+    """Инициализация базы данных."""
     try:
-        # Используем check_same_thread=False и WAL для лучшей конкурентности
-        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        conn.execute('PRAGMA journal_mode=WAL') 
-        cursor = conn.cursor()
-        logger.info(f"Подключено к БД: {DB_PATH}")
+        db = sqlite3.connect('full_api_new.db')
+        db.row_factory = sqlite3.Row # Добавим, чтобы получать результаты как словари
+        cursor = db.cursor()
 
-        # Выполняем все SQL-скрипты из списка ALL_SCHEMAS
-        for i, schema_sql in enumerate(ALL_SCHEMAS):
-            try:
-                # Используем executescript для выполнения нескольких утверждений в одной строке (например, CREATE TABLE + CREATE TRIGGER)
-                cursor.executescript(schema_sql)
-                logger.debug(f"Схема #{i+1} успешно выполнена.")
-            except sqlite3.Error as e:
-                # Логируем ошибку, но продолжаем с другими схемами
-                # Это может произойти, если таблица/индекс/триггер уже существуют, что нормально
-                logger.warning(f"Ошибка при выполнении схемы #{i+1}: {e} (Возможно, объект уже существует)")
+        # Создаем таблицы, если они не существуют
+        # ВОЗВРАЩАЕМ СОЗДАНИЕ ТАБЛИЦЫ USERS В САМОЕ НАЧАЛО!
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                hashed_password TEXT NOT NULL,
+                full_name TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                is_superuser BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        logger.info("Проверено/Создана таблица 'users'") # Добавим лог
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS organizations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                code TEXT NOT NULL,
+                description TEXT,
+                org_type TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT 1,
+                parent_id INTEGER,
+                ckp TEXT,
+                inn TEXT,
+                kpp TEXT,
+                legal_address TEXT,
+                physical_address TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (parent_id) REFERENCES organizations (id)
+            )
+        """)
+        logger.info("Проверено/Создана таблица 'organizations'") # Добавим лог
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS divisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                code TEXT NOT NULL,
+                description TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                organization_id INTEGER NOT NULL,
+                parent_id INTEGER,
+                ckp TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (organization_id) REFERENCES organizations (id),
+                FOREIGN KEY (parent_id) REFERENCES divisions (id)
+            )
+        """)
+        logger.info("Проверено/Создана таблица 'divisions'") # Добавим лог
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                division_id INTEGER NOT NULL,
+                description TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (division_id) REFERENCES divisions (id)
+            )
+        """)
+        logger.info("Проверено/Создана таблица 'sections'") # Добавим лог
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS functions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                code TEXT NOT NULL,
+                description TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                code TEXT NOT NULL,
+                description TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                function_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (function_id) REFERENCES functions (id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS staff (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                middle_name TEXT,
+                phone TEXT,
+                description TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                organization_id INTEGER,
+                primary_organization_id INTEGER,
+                location_id INTEGER,
+                telegram_id TEXT,
+                vk TEXT,
+                instagram TEXT,
+                registration_address TEXT,
+                actual_address TEXT,
+                photo_path TEXT,
+                document_paths TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (organization_id) REFERENCES organizations (id),
+                FOREIGN KEY (primary_organization_id) REFERENCES organizations (id),
+                FOREIGN KEY (location_id) REFERENCES organizations (id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS staff_positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                staff_id INTEGER NOT NULL,
+                position_id INTEGER NOT NULL,
+                division_id INTEGER,
+                location_id INTEGER,
+                is_primary BOOLEAN DEFAULT 1,
+                is_active BOOLEAN DEFAULT 1,
+                start_date DATE NOT NULL,
+                end_date DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (staff_id) REFERENCES staff (id),
+                FOREIGN KEY (position_id) REFERENCES positions (id),
+                FOREIGN KEY (division_id) REFERENCES divisions (id),
+                FOREIGN KEY (location_id) REFERENCES organizations (id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS staff_locations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                staff_id INTEGER NOT NULL,
+                location_id INTEGER NOT NULL,
+                is_current BOOLEAN DEFAULT 1,
+                date_from DATE NOT NULL,
+                date_to DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (staff_id) REFERENCES staff (id),
+                FOREIGN KEY (location_id) REFERENCES organizations (id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS staff_functions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                staff_id INTEGER NOT NULL,
+                function_id INTEGER NOT NULL,
+                commitment_percent INTEGER DEFAULT 100,
+                is_primary BOOLEAN DEFAULT 1,
+                date_from DATE NOT NULL,
+                date_to DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (staff_id) REFERENCES staff (id),
+                FOREIGN KEY (function_id) REFERENCES functions (id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS functional_relations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                manager_id INTEGER NOT NULL,
+                subordinate_id INTEGER NOT NULL,
+                relation_type TEXT NOT NULL,
+                description TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (manager_id) REFERENCES staff (id),
+                FOREIGN KEY (subordinate_id) REFERENCES staff (id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vfp (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
+                metrics TEXT,  -- JSON строка
+                status TEXT DEFAULT 'not_started',
+                progress INTEGER DEFAULT 0,
+                start_date DATE,
+                target_date DATE,
+                is_active BOOLEAN DEFAULT 1,
+                entity_type TEXT NOT NULL,  -- Тип сущности (staff, position, etc.)
+                entity_id INTEGER NOT NULL,  -- ID связанной сущности
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        db.commit()
+        logger.info("База данных успешно инициализирована (все таблицы проверены/созданы)")
         
-        conn.commit()
-        logger.info("Инициализация БД успешно завершена (все схемы применены).")
-        
-    except sqlite3.Error as e:
-        logger.error(f"Критическая ошибка при подключении или инициализации БД: {e}", exc_info=True)
-        if conn: # Пытаемся откатить, если было соединение
-            conn.rollback()
-        # Перевыбрасываем ошибку, т.к. без БД работать нельзя
-        raise RuntimeError(f"Не удалось инициализировать базу данных: {e}") 
     except Exception as e:
-         logger.error(f"Неожиданная ошибка при инициализации БД: {e}", exc_info=True)
-         if conn:
-            conn.rollback()
-         raise RuntimeError(f"Неожиданная ошибка инициализации БД: {e}")
+        logger.error(f"Ошибка при инициализации базы данных: {e}", exc_info=True) # Добавим exc_info для полного трейсбека
+        raise
     finally:
-        if conn:
-            conn.close()
-            logger.debug("Соединение с БД закрыто после инициализации.")
+        if db: # Проверяем, что соединение было установлено перед закрытием
+            db.close()
 
 # ================== РОУТЫ API ==================
 
@@ -581,7 +758,7 @@ async def register_user(user_in: UserCreate, db: sqlite3.Connection = Depends(ge
     
     # Проверяем, не существует ли уже пользователь с таким email
     cursor = db.cursor()
-    cursor.execute("SELECT id FROM user WHERE email = ?", (user_in.email,))
+    cursor.execute("SELECT id FROM users WHERE email = ?", (user_in.email,))
     existing_user = cursor.fetchone()
     
     if existing_user:
@@ -597,7 +774,7 @@ async def register_user(user_in: UserCreate, db: sqlite3.Connection = Depends(ge
     # Добавляем нового пользователя
     try:
         cursor.execute(
-            "INSERT INTO user (email, hashed_password, full_name, is_active, is_superuser) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO users (email, hashed_password, full_name, is_active, is_superuser) VALUES (?, ?, ?, ?, ?)",
             (
                 user_in.email,
                 hashed_password,
@@ -2958,512 +3135,3 @@ def delete_function(
             status_code=500,
             detail=f"Ошибка при удалении функции: {str(e)}"
         )
-
-# <<-- НАЧАЛО ЭНДПОИНТОВ ДЛЯ ДОЛЖНОСТЕЙ (Positions) -->>
-
-# Вспомогательная функция для получения функций должности
-def _get_functions_for_position(db: sqlite3.Connection, position_id: int) -> List[Function]:
-    cursor = db.cursor()
-    cursor.execute("""
-        SELECT f.id, f.name, f.code, f.description, f.is_active, f.created_at, f.updated_at
-        FROM functions f
-        JOIN position_functions pf ON f.id = pf.function_id
-        WHERE pf.position_id = ?
-    """, (position_id,))
-    functions_db = cursor.fetchall()
-    # Используем model_validate для Pydantic v2+
-    return [Function.model_validate(dict(row)) for row in functions_db] 
-
-# Вспомогательная функция для получения одной должности с функциями
-def _get_position_with_functions(db: sqlite3.Connection, position_id: int) -> Optional[Position]:
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM positions WHERE id = ?", (position_id,))
-    position_db = cursor.fetchone()
-    if not position_db:
-        return None
-    
-    position_dict = dict(position_db)
-    functions = _get_functions_for_position(db, position_id)
-    position_dict["functions"] = functions
-    
-    # Валидируем в модель Position
-    try:
-         # Используем model_validate для Pydantic v2+
-        return Position.model_validate(position_dict)
-    except Exception as e:
-        logger.error(f"Ошибка валидации Position ID {position_id} после чтения из БД: {e}", exc_info=True)
-        # В случае ошибки валидации, возвращаем None или рейзим ошибку сервера,
-        # чтобы не вернуть невалидные данные.
-        # Пока вернем None, чтобы внешняя функция вызвала 404 или 500.
-        return None
-
-@app.post("/positions/", response_model=Position, status_code=status.HTTP_201_CREATED, tags=["Positions"]) # Добавим тег
-def create_position(
-    position_data: PositionCreate,
-    db: sqlite3.Connection = Depends(get_db),
-    current_user: User = Depends(get_current_active_user) # Добавим зависимость аутентификации
-):
-    """Создать новую должность со связями функций."""
-    logger.info(f"Попытка создания должности: {position_data.name}")
-    cursor = db.cursor()
-
-    # Проверка связанных division_id и section_id (если они переданы)
-    if position_data.division_id is not None:
-        cursor.execute("SELECT id FROM divisions WHERE id = ?", (position_data.division_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Подразделение с ID {position_data.division_id} не найдено")
-    if position_data.section_id is not None:
-        cursor.execute("SELECT id FROM sections WHERE id = ?", (position_data.section_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Отдел с ID {position_data.section_id} не найдено")
-
-    # Проверка существования всех переданных function_ids
-    if position_data.function_ids:
-        # Валидация ID функций (предотвращение SQL-инъекции через placeholders)
-        if not all(isinstance(fid, int) for fid in position_data.function_ids):
-             raise HTTPException(status_code=400, detail="Некорректные ID функций")
-        placeholders = ",".join("?" * len(position_data.function_ids))
-        cursor.execute(f"SELECT COUNT(id) FROM functions WHERE id IN ({placeholders})", position_data.function_ids)
-        count = cursor.fetchone()[0]
-        if count != len(position_data.function_ids):
-            # Чтобы узнать, какие именно ID не найдены (опционально, для лучшей отладки)
-            cursor.execute(f"SELECT id FROM functions WHERE id IN ({placeholders})", position_data.function_ids)
-            found_ids = {row["id"] for row in cursor.fetchall()}
-            missing_ids = set(position_data.function_ids) - found_ids
-            raise HTTPException(status_code=400, detail=f"Функции с ID {missing_ids} не существуют")
-
-    try:
-        # Шаг 1: Вставка основной информации о должности
-        # Убираем code из INSERT, так как его нет в модели
-        cursor.execute("""
-            INSERT INTO positions (name, description, is_active, attribute, division_id, section_id) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            position_data.name,
-            position_data.description,
-            1 if position_data.is_active else 0,
-            position_data.attribute.value, # Используем .value для Enum
-            position_data.division_id,
-            position_data.section_id
-        ))
-        position_id = cursor.lastrowid
-
-        # Шаг 2: Вставка связей в position_functions
-        if position_data.function_ids:
-            bindings = [(position_id, func_id) for func_id in position_data.function_ids]
-            cursor.executemany("INSERT INTO position_functions (position_id, function_id) VALUES (?, ?)", bindings)
-        
-        db.commit()
-        logger.info(f"Должность '{position_data.name}' (ID: {position_id}) успешно создана.")
-
-        # Шаг 3: Получение и возврат созданной должности с функциями
-        created_position = _get_position_with_functions(db, position_id)
-        if created_position:
-            return created_position
-        else:
-             # Это не должно произойти, если вставка прошла успешно
-            logger.error(f"Критическая ошибка: не удалось найти только что созданную должность ID {position_id}")
-            raise HTTPException(status_code=500, detail="Ошибка получения созданной должности")
-
-    except sqlite3.IntegrityError as e:
-        db.rollback()
-        logger.error(f"Ошибка целостности БД при создании должности: {e}")
-        # Проверяем, не было ли ошибки уникальности имени или кода (если code вернут)
-        if "UNIQUE constraint failed: positions.name" in str(e):
-             raise HTTPException(status_code=400, detail=f"Должность с именем '{position_data.name}' уже существует")
-        # if "UNIQUE constraint failed: positions.code" in str(e): # Если поле code вернут
-        #     raise HTTPException(status_code=400, detail=f"Должность с кодом '{position_data.code}' уже существует")
-        raise HTTPException(status_code=400, detail=f"Ошибка при создании должности: {e}")
-    except sqlite3.Error as e:
-        db.rollback()
-        logger.error(f"Ошибка БД при создании должности: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Ошибка базы данных при создании должности")
-
-@app.get("/positions/", response_model=List[Position], tags=["Positions"]) # Добавим тег
-def read_positions(
-    skip: int = 0,
-    limit: int = 100,
-    is_active: Optional[bool] = Query(None, description="Фильтр по статусу активности"),
-    attribute: Optional[PositionAttribute] = Query(None, description="Фильтр по атрибуту должности"),
-    division_id: Optional[int] = Query(None, description="Фильтр по ID подразделения"),
-    # Добавим фильтр по имени
-    name_filter: Optional[str] = Query(None, alias="name", description="Фильтр по части имени (регистронезависимый)"),
-    db: sqlite3.Connection = Depends(get_db),
-    current_user: User = Depends(get_current_active_user) # Добавим аутентификацию
-):
-    """Получить список должностей с фильтрацией и пагинацией."""
-    cursor = db.cursor()
-    
-    # Выбираем сразу все поля, чтобы потом меньше дергать _get_position_with_functions
-    # Используем LEFT JOIN, чтобы получить все должности, даже если у них нет функций
-    base_query = """
-        SELECT DISTINCT p.id
-        FROM positions p
-        LEFT JOIN position_functions pf ON p.id = pf.position_id
-        WHERE 1=1 
-    """
-    params = []
-
-    if is_active is not None:
-        base_query += " AND p.is_active = ?"
-        params.append(1 if is_active else 0)
-    if attribute is not None:
-        base_query += " AND p.attribute = ?"
-        params.append(attribute.value)
-    if division_id is not None:
-        base_query += " AND p.division_id = ?"
-        params.append(division_id)
-    if name_filter is not None:
-         # Используем LIKE для поиска по части строки, LOWER для регистронезависимости
-        base_query += " AND LOWER(p.name) LIKE LOWER(?)"
-        params.append(f"%{name_filter}%")
-    
-    # Сначала получаем ID с пагинацией
-    count_query = base_query.replace("SELECT DISTINCT p.id", "SELECT COUNT(DISTINCT p.id)")
-    cursor.execute(count_query, params)
-    total_count = cursor.fetchone()[0] # Нужно для заголовков пагинации, если фронт их использует
-
-    id_query = base_query + " ORDER BY p.name LIMIT ? OFFSET ?"
-    params.extend([limit, skip])
-
-    try:
-        cursor.execute(id_query, params)
-        position_ids = [row["id"] for row in cursor.fetchall()]
-        
-        positions_list: List[Position] = []
-        if position_ids:
-            # Получаем все должности и все их функции одним махом (или двумя) для оптимизации
-            
-            # 1. Получаем данные самих должностей
-            pos_placeholders = ",".join("?" * len(position_ids))
-            cursor.execute(f"SELECT * FROM positions WHERE id IN ({pos_placeholders}) ORDER BY name", position_ids)
-            positions_db = {row["id"]: dict(row) for row in cursor.fetchall()}
-            
-            # 2. Получаем все связи и сами функции для этих должностей
-            cursor.execute(f"""
-                SELECT pf.position_id, f.* 
-                FROM functions f 
-                JOIN position_functions pf ON f.id = pf.function_id
-                WHERE pf.position_id IN ({pos_placeholders})
-            """, position_ids)
-            
-            # Группируем функции по position_id
-            functions_by_position_id: Dict[int, List[Function]] = {pos_id: [] for pos_id in position_ids}
-            for row in cursor.fetchall():
-                try:
-                     # Используем model_validate
-                    func = Function.model_validate(dict(row))
-                    functions_by_position_id[row["position_id"]].append(func)
-                except Exception as e:
-                    logger.warning(f"Ошибка валидации Function ID {row['id']} при чтении списка должностей: {e}")
-
-            # 3. Собираем финальные объекты Position
-            for pos_id in position_ids:
-                if pos_id in positions_db:
-                    pos_dict = positions_db[pos_id]
-                    pos_dict["functions"] = functions_by_position_id.get(pos_id, [])
-                    try:
-                         # Используем model_validate
-                        positions_list.append(Position.model_validate(pos_dict))
-                    except Exception as e:
-                        logger.error(f"Ошибка валидации Position ID {pos_id} при сборке списка: {e}", exc_info=True)
-                else:
-                     logger.warning(f"Не удалось найти данные для должности ID {pos_id}, хотя ID был получен.")
-
-        # В реальном API стоило бы вернуть заголовки X-Total-Count и т.д.
-        return positions_list
-        
-    except sqlite3.Error as e:
-        logger.error(f"Ошибка БД при получении списка должностей: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Ошибка базы данных при получении списка должностей")
-
-@app.get("/positions/{position_id}", response_model=Position, tags=["Positions"]) # Добавим тег
-def read_position(
-    position_id: int,
-    db: sqlite3.Connection = Depends(get_db),
-    current_user: User = Depends(get_current_active_user) # Добавим аутентификацию
-):
-    """Получить информацию о должности по ID, включая функции."""
-    position = _get_position_with_functions(db, position_id)
-    if position is None:
-        raise HTTPException(status_code=404, detail="Должность не найдена")
-    return position
-
-@app.put("/positions/{position_id}", response_model=Position, tags=["Positions"]) # Добавим тег
-def update_position(
-    position_id: int,
-    position_data: PositionCreate, # Используем модель для создания, она содержит все поля
-    db: sqlite3.Connection = Depends(get_db),
-    current_user: User = Depends(get_current_active_user) # Добавим аутентификацию
-):
-    """Обновить должность, включая связи с функциями."""
-    logger.info(f"Попытка обновления должности ID: {position_id}")
-    cursor = db.cursor()
-
-    # 1. Проверяем, существует ли должность
-    cursor.execute("SELECT id FROM positions WHERE id = ?", (position_id,))
-    if not cursor.fetchone():
-        raise HTTPException(status_code=404, detail="Должность для обновления не найдена")
-
-    # 2. Проверяем связанные division_id и section_id (если они переданы)
-    if position_data.division_id is not None:
-        cursor.execute("SELECT id FROM divisions WHERE id = ?", (position_data.division_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Подразделение с ID {position_data.division_id} не найдено")
-    if position_data.section_id is not None:
-        cursor.execute("SELECT id FROM sections WHERE id = ?", (position_data.section_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Отдел с ID {position_data.section_id} не найдено")
-
-    # 3. Проверка существования всех переданных function_ids
-    if position_data.function_ids:
-        if not all(isinstance(fid, int) for fid in position_data.function_ids):
-             raise HTTPException(status_code=400, detail="Некорректные ID функций")
-        placeholders = ",".join("?" * len(position_data.function_ids))
-        cursor.execute(f"SELECT COUNT(id) FROM functions WHERE id IN ({placeholders})", position_data.function_ids)
-        count = cursor.fetchone()[0]
-        if count != len(position_data.function_ids):
-            cursor.execute(f"SELECT id FROM functions WHERE id IN ({placeholders})", position_data.function_ids)
-            found_ids = {row["id"] for row in cursor.fetchall()}
-            missing_ids = set(position_data.function_ids) - found_ids
-            raise HTTPException(status_code=400, detail=f"Функции с ID {missing_ids} не существуют")
-
-    try:
-        # Шаг 4: Обновление основной информации о должности
-        # Убираем code из UPDATE
-        cursor.execute("""
-            UPDATE positions SET 
-                name = ?,
-                description = ?,
-                is_active = ?,
-                attribute = ?,
-                division_id = ?,
-                section_id = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (
-            position_data.name,
-            position_data.description,
-            1 if position_data.is_active else 0,
-            position_data.attribute.value,
-            position_data.division_id,
-            position_data.section_id,
-            position_id
-        ))
-
-        # Шаг 5: Обновление связей в position_functions (удалить старые, вставить новые)
-        cursor.execute("DELETE FROM position_functions WHERE position_id = ?", (position_id,))
-        if position_data.function_ids:
-            bindings = [(position_id, func_id) for func_id in position_data.function_ids]
-            cursor.executemany("INSERT INTO position_functions (position_id, function_id) VALUES (?, ?)", bindings)
-
-        db.commit()
-        logger.info(f"Должность ID {position_id} успешно обновлена.")
-
-        # Шаг 6: Получение и возврат обновленной должности с функциями
-        updated_position = _get_position_with_functions(db, position_id)
-        if updated_position:
-            return updated_position
-        else:
-             # Если вдруг не нашли после обновления (маловероятно)
-            logger.error(f"Критическая ошибка: не удалось найти только что обновленную должность ID {position_id}")
-            raise HTTPException(status_code=500, detail="Ошибка получения обновленной должности")
-
-    except sqlite3.IntegrityError as e:
-        db.rollback()
-        logger.error(f"Ошибка целостности БД при обновлении должности ID {position_id}: {e}")
-        if "UNIQUE constraint failed: positions.name" in str(e):
-             raise HTTPException(status_code=400, detail=f"Должность с именем '{position_data.name}' уже существует (принадлежит другой записи)")
-        # if "UNIQUE constraint failed: positions.code" in str(e): # Если code вернут
-        #     raise HTTPException(status_code=400, detail=f"Должность с кодом '{position_data.code}' уже существует (принадлежит другой записи)")
-        raise HTTPException(status_code=400, detail=f"Ошибка при обновлении должности: {e}")
-    except sqlite3.Error as e:
-        db.rollback()
-        logger.error(f"Ошибка БД при обновлении должности ID {position_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Ошибка базы данных при обновлении должности")
-
-@app.delete("/positions/{position_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Positions"]) # Добавим тег
-def delete_position(
-    position_id: int,
-    db: sqlite3.Connection = Depends(get_db),
-    current_user: User = Depends(get_current_active_user) # Добавим аутентификацию
-):
-    """Удалить должность. Связи в position_functions удалятся каскадно."""
-    logger.warning(f"Попытка удаления должности ID: {position_id}")
-    cursor = db.cursor()
-    
-    # Проверяем существование
-    cursor.execute("SELECT id FROM positions WHERE id = ?", (position_id,))
-    if not cursor.fetchone():
-        raise HTTPException(status_code=404, detail="Должность не найдена")
-    
-    # Проверяем, не связана ли должность с сотрудниками в staff_positions
-    # (чтобы предотвратить удаление должности, которую кто-то занимает)
-    cursor.execute("SELECT COUNT(id) FROM staff_positions WHERE position_id = ?", (position_id,))
-    staff_count = cursor.fetchone()[0]
-    if staff_count > 0:
-        logger.error(f"Попытка удалить должность ID {position_id}, которая назначена {staff_count} сотрудникам.")
-        raise HTTPException(status_code=400, detail=f"Невозможно удалить должность, так как она назначена {staff_count} сотрудникам. Сначала переназначьте сотрудников.")
-
-    try:
-        # Удаляем должность (связи в position_functions удалятся каскадно благодаря ON DELETE CASCADE)
-        cursor.execute("DELETE FROM positions WHERE id = ?", (position_id,))
-        db.commit()
-        logger.info(f"Должность ID {position_id} успешно удалена.")
-        # Возвращаем пустой ответ со статусом 204 - используем Response
-        from fastapi import Response
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-    except sqlite3.Error as e:
-        db.rollback()
-        logger.error(f"Ошибка БД при удалении должности ID {position_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Ошибка базы данных при удалении должности")
-
-# <<-- КОНЕЦ ЭНДПОИНТОВ ДЛЯ ДОЛЖНОСТЕЙ (Positions) -->>
-
-# <<-- НАЧАЛО ЭНДПОИНТОВ ДЛЯ СОТРУДНИКОВ (Staff) -->>
-
-# Эндпоинт для получения списка сотрудников (ДОБАВЛЕНО)
-@app.get("/staff/", response_model=List[Staff], tags=["Staff"]) 
-def read_staff(
-    skip: int = 0, 
-    limit: int = 100, 
-    is_active: Optional[bool] = Query(None, description="Фильтр по активности"),
-    # Добавим другие возможные фильтры, например, по части имени
-    name_filter: Optional[str] = Query(None, alias="name", description="Фильтр по части имени, фамилии или отчества (регистронезависимый)"),
-    # Можно добавить фильтры по организации, должности и т.д., если нужно
-    db: sqlite3.Connection = Depends(get_db), 
-    current_user: User = Depends(get_current_active_user)
-):
-    """Получить список сотрудников с фильтрацией и пагинацией."""
-    cursor = db.cursor()
-    query = "SELECT * FROM staff WHERE 1=1"
-    params = []
-
-    if is_active is not None:
-        query += " AND is_active = ?"
-        params.append(1 if is_active else 0)
-    
-    if name_filter:
-        # Ищем по совпадению в любом из полей имени
-        query += " AND (LOWER(first_name) LIKE LOWER(?) OR LOWER(last_name) LIKE LOWER(?) OR LOWER(middle_name) LIKE LOWER(?))"
-        like_pattern = f"%{name_filter}%"
-        params.extend([like_pattern, like_pattern, like_pattern])
-
-    query += " ORDER BY last_name, first_name LIMIT ? OFFSET ?"
-    params.extend([limit, skip])
-
-    try:
-        cursor.execute(query, params)
-        staff_list_db = cursor.fetchall()
-        # Преобразуем каждую строку в объект Staff
-        staff_list = [Staff.model_validate(dict(row)) for row in staff_list_db]
-        return staff_list
-    except sqlite3.Error as e:
-        logger.error(f"Ошибка БД при получении списка сотрудников: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Ошибка базы данных при получении списка сотрудников")
-
-# Эндпоинт для создания сотрудника (АКТУАЛЬНАЯ ВЕРСИЯ)
-@app.post("/staff/", response_model=Staff, status_code=status.HTTP_201_CREATED, tags=["Staff"])
-def create_staff(
-    staff_data: StaffCreate,
-    db: sqlite3.Connection = Depends(get_db),
-    # Убираем current_user, если создание сотрудника не требует аутентификации
-    # current_user: User = Depends(get_current_active_user) 
-):
-    """Создать нового сотрудника. Опционально создает связанную учетную запись User."""
-    logger.info(f"Попытка создания сотрудника: {staff_data.email}")
-    cursor = db.cursor()
-    user_id_to_link: Optional[int] = None
-
-    # --- Логика создания User (если нужно) --- 
-    if staff_data.create_user_account:
-        logger.info(f"Запрошено создание учетной записи для {staff_data.email}")
-        # <<-- ПРОВЕРКА ПАРОЛЯ НА МЕСТЕ -->>
-        if not staff_data.password:
-            logger.warning(f"Попытка создать User для {staff_data.email} без пароля.")
-            raise HTTPException(status_code=400, detail="Пароль обязателен при создании учетной записи пользователя.")
-        
-        # 1. Проверяем, не занят ли email в таблице user
-        cursor.execute("SELECT id FROM user WHERE email = ?", (staff_data.email,))
-        existing_user = cursor.fetchone()
-        if existing_user:
-            raise HTTPException(status_code=400, detail=f"Учетная запись с email {staff_data.email} уже существует.")
-        
-        # 2. Создаем запись в user
-        try:
-            hashed_password = get_password_hash(staff_data.password) # Теперь тут не будет None
-            # Формируем full_name для user из данных staff
-            full_name_for_user = f"{staff_data.last_name} {staff_data.first_name}".strip()
-            if staff_data.middle_name:
-                full_name_for_user += f" {staff_data.middle_name}"
-                
-            cursor.execute("""
-                INSERT INTO user (email, hashed_password, full_name, is_active, is_superuser)
-                VALUES (?, ?, ?, ?, ?)
-            """, (staff_data.email, hashed_password, full_name_for_user, 1, 0))
-            user_id_to_link = cursor.lastrowid
-            logger.info(f"Создана учетная запись User ID: {user_id_to_link} для {staff_data.email}")
-            # Коммит нужен здесь, чтобы user точно создался перед staff
-            # db.commit() # <-- Коммит здесь может быть рискованным, если создание staff упадет
-        except sqlite3.Error as e:
-            # db.rollback() # Откатывать нечего, если не было коммита
-            logger.error(f"Ошибка БД при создании User для {staff_data.email}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Ошибка базы данных при создании учетной записи пользователя")
-    # --- Конец логики создания User --- 
-
-    # --- Логика создания Staff --- 
-    # Проверяем, не существует ли уже сотрудник с таким email в таблице staff
-    cursor.execute("SELECT id FROM staff WHERE email = ?", (staff_data.email,))
-    existing_staff = cursor.fetchone()
-    if existing_staff:
-        # Если мы создавали User, его нужно откатить/удалить, т.к. Staff не создастся
-        # Но т.к. мы еще не делали commit, достаточно просто db.rollback() перед выходом
-        db.rollback()
-        raise HTTPException(status_code=409, detail=f"Сотрудник с email {staff_data.email} уже существует.")
-
-    try:
-        # Формируем данные для вставки в staff
-        staff_values = staff_data.model_dump(exclude={"create_user_account", "password"}) # Исключаем поля, обработанные выше
-        staff_values["user_id"] = user_id_to_link # Добавляем ID созданного пользователя (или None)
-
-        # Определяем колонки и плейсхолдеры динамически
-        columns = ", ".join(staff_values.keys())
-        placeholders = ", ".join(["?"] * len(staff_values))
-        values_tuple = tuple(staff_values.values())
-
-        # Вставляем запись в staff
-        cursor.execute(f"""
-            INSERT INTO staff ({columns}) 
-            VALUES ({placeholders})
-        """, values_tuple)
-        staff_id = cursor.lastrowid
-        db.commit() # Коммитим И User (если был) И Staff вместе
-        logger.info(f"Сотрудник ID: {staff_id} успешно создан для {staff_data.email}")
-        
-        # Получаем созданную запись
-        cursor.execute("SELECT * FROM staff WHERE id = ?", (staff_id,))
-        created_staff_row = cursor.fetchone()
-        if not created_staff_row:
-            # Это маловероятно после успешной вставки, но для надежности
-            # Откатить уже не можем, т.к. был commit
-            logger.error(f"Критическая ошибка: не удалось получить сотрудника ID {staff_id} после commit.")
-            raise HTTPException(status_code=500, detail="Не удалось получить созданного сотрудника после вставки.")
-
-        return dict(created_staff_row) # Возвращаем как словарь
-    
-    except sqlite3.IntegrityError as e:
-        db.rollback() # Откатываем транзакцию (включая User, если он был создан без коммита ранее)
-        logger.warning(f"Ошибка целостности при создании Staff {staff_data.email}: {e}", exc_info=True)
-        # Проверяем, какое ограничение нарушено (хотя мы уже проверили email)
-        if "UNIQUE constraint failed: staff.email" in str(e):
-             # Эта ветка не должна сработать из-за проверки выше, но на всякий случай
-            raise HTTPException(status_code=409, detail=f"Сотрудник с email {staff_data.email} уже существует (повторная проверка).")
-        # Можно добавить обработку других UNIQUE constraint, если они есть
-        raise HTTPException(status_code=400, detail=f"Ошибка целостности данных: {e}")
-    except sqlite3.Error as e:
-        db.rollback()
-        logger.error(f"Ошибка БД при создании Staff {staff_data.email}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Ошибка базы данных при создании сотрудника.")
-
-# ... (остальные эндпоинты) ...

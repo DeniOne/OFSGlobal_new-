@@ -160,6 +160,7 @@ export interface Staff {
   updated_at: string;
   
   // Добавляем недостающие поля, используемые в UI
+  user_id?: number | null;
   registration_address?: Address | null;
   actual_address?: Address | null;
   photo_path?: string | null;
