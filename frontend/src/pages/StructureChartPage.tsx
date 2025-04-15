@@ -1,14 +1,24 @@
-import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Spin,
   message,
   Typography,
   Space,
   Button,
-  Alert
+  Alert,
+  Form,
+  InputNumber,
+  Select,
+  Card,
+  Row,
+  Col,
+  Tag,
+  Tooltip
 } from 'antd';
 import {
-  ReloadOutlined
+  ReloadOutlined,
+  FilterOutlined,
+  UserOutlined
 } from '@ant-design/icons';
 import ReactFlow, {
   ReactFlowProvider,
@@ -18,215 +28,266 @@ import ReactFlow, {
   MiniMap,
   Background,
   MarkerType,
-  Position as RFPosition
+  Position as RFPosition,
+  Node,
+  Edge,
+  NodeTypes,
+  Handle
 } from 'reactflow';
-// Если @react-flow/core не экспортирует ReactFlow и т.д., пробуем @react-flow/react-renderer
-// import ReactFlow, {
-//   ReactFlowProvider,
-//   useNodesState,
-//   useEdgesState,
-//   Controls,
-//   MiniMap,
-//   Background,
-// } from '@react-flow/react-renderer';
 
-import api from '../services/api';
+import 'reactflow/dist/style.css'; // Импортируем стили React Flow
+
+// Импортируем наши сервисы
+import { getAllPositions } from '../services/positionsService';
+import { getAllHierarchyRelations } from '../services/hierarchyRelationsService';
+import orgTreeService from '../services/orgTreeService';
+import organizationService, { OrganizationDTO } from '../services/organizationService';
+import staffService from '../services/staffService';
+
+// Импортируем типы
+import { HierarchyRelation } from '../types/hierarchy';
+// Используем временный тип Position из positionsService, но лучше создать его в types/
+import { Position } from '../services/positionsService'; // Assuming Position is exported there
+
 import dagre from 'dagre';
 
 const { Title } = Typography;
 
-// Интерфейсы для данных с бэкенда (можно взять из других страниц)
-interface Division { id: number; name: string; parent_id?: number | null; code?: string; /* ... другие поля */ }
-interface Position { id: number; name: string; division_id?: number | null; parent_id?: number | null; code?: string; /* ... */ }
-interface Staff { id: number; last_name: string; first_name: string; /* ... */ }
-interface FunctionalRelation { 
-    id: number; 
-    source_type: string; source_id: number; 
-    target_type: string; target_id: number; 
-    relation_type: string; 
-    /* ... */ 
-}
-
 // Размеры узлов для dagre
-const nodeWidth = 172;
-const nodeHeight = 50;
+const nodeWidth = 220;  // Расширяем для размещения информации о сотрудниках
+const nodeHeight = 120; // Увеличиваем высоту для сотрудников
 
 // Функция для создания графа dagre и расчета позиций
-const getLayoutedElements = (nodes: any[], edges: any[], direction = 'TB') => {
+const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB'): { nodes: Node[]; edges: Edge[] } => {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
   dagreGraph.setGraph({ rankdir: direction });
 
-  const nodeIds = new Set(nodes.map(n => n.id)); // Сохраняем ID всех узлов
+  const nodeIds = new Set(nodes.map(n => n.id));
 
   nodes.forEach((node) => {
+    // Используем реальные размеры узла, если они доступны, иначе дефолтные
+    // Это может потребовать рендеринга узлов для получения размеров, что сложно.
+    // Пока используем фиксированные размеры для dagre.
     dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
   });
 
   edges.forEach((edge) => {
-    // Добавляем ребро в dagre только если оба узла существуют
     if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {
       dagreGraph.setEdge(edge.source, edge.target);
     } else {
-        console.warn(`[LOG:Chart] Dagre: Skipped edge ${edge.id} because source or target node not found.`);
+      console.warn(`[LOG:Chart] Dagre: Skipped edge ${edge.id} because source or target node not found.`);
     }
   });
 
-  // Оборачиваем layout в try...catch
   try {
-      dagre.layout(dagreGraph);
+    dagre.layout(dagreGraph);
   } catch (layoutError) {
-      console.error("[LOG:Chart] Dagre layout error:", layoutError);
-      // Возвращаем узлы без позиций или с дефолтными, чтобы избежать падения дальше
-      // Можно добавить маркер ошибки в данные узла
-       nodes.forEach(node => {
-           node.data.layoutError = true; 
-           node.position = { x: Math.random() * 400, y: Math.random() * 400 }; // Случайные позиции для отладки
-       });
-       message.error('Ошибка автоматической раскладки схемы.');
-      return { nodes, edges }; // Возвращаем исходные ребра и узлы с ошибкой
+    console.error("[LOG:Chart] Dagre layout error:", layoutError);
+    nodes.forEach(node => {
+      node.data = { ...node.data, layoutError: true };
+      node.position = { x: Math.random() * 400, y: Math.random() * 400 };
+    });
+    message.error('Ошибка автоматической раскладки схемы.');
+    return { nodes, edges };
   }
-  
-  // Расчет позиций узлов react-flow
+
   nodes.forEach((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
-    if (nodeWithPosition) { // Проверяем, что узел найден в графе dagre
-        node.targetPosition = RFPosition.Top;
-        node.sourcePosition = RFPosition.Bottom;
-        node.position = {
-            x: nodeWithPosition.x - nodeWidth / 2,
-            y: nodeWithPosition.y - nodeHeight / 2,
-        };
-        delete node.data.layoutError; // Удаляем маркер ошибки, если был
+    if (nodeWithPosition) {
+      node.targetPosition = RFPosition.Top;
+      node.sourcePosition = RFPosition.Bottom;
+      node.position = {
+        x: nodeWithPosition.x - nodeWidth / 2,
+        y: nodeWithPosition.y - nodeHeight / 2,
+      };
+      node.data = { ...node.data, layoutError: false };
     } else {
-        // Если узел не найден в dagre (не должно случиться при правильной логике)
-        console.warn(`[LOG:Chart] Node ${node.id} not found in dagre graph after layout.`);
-        node.position = { x: 0, y: 0 }; 
+      console.warn(`[LOG:Chart] Node ${node.id} not found in dagre graph after layout.`);
+      node.position = { x: 0, y: 0 };
     }
-    return node;
   });
 
   return { nodes, edges };
 };
 
-// Стили узлов
-const baseNodeStyle = {
+// Функция для определения стиля узла на основе атрибута
+const getNodeStyle = (attribute: string) => {
+  const baseStyle = {
     border: '1px solid',
     padding: '10px 15px',
     borderRadius: '4px',
     background: 'white',
     width: nodeWidth,
-    // height: nodeHeight, // Высота может меняться
     textAlign: 'center' as const,
-    fontSize: '12px'
+    fontSize: '12px',
+    color: '#fff', // Базовый цвет текста - белый
+    fontWeight: 'bold' // Жирный текст для лучшей читаемости
+  };
+
+  // TODO: Расширить эту логику для разных атрибутов
+  switch (attribute) {
+    case 'Директор Направления':
+      return { ...baseStyle, borderColor: '#f5222d', background: '#cf1322', color: '#fff' };
+    case 'Руководитель Департамента':
+      return { ...baseStyle, borderColor: '#fa8c16', background: '#d46b08', color: '#fff' };
+    case 'Руководитель Отдела':
+        return { ...baseStyle, borderColor: '#1890ff', background: '#096dd9', color: '#fff' };
+    case 'Специалист':
+      return { ...baseStyle, borderColor: '#52c41a', background: '#389e0d', color: '#fff' };
+    // Добавляем остальные атрибуты
+    case 'Учредитель':
+      return { ...baseStyle, borderColor: '#722ed1', background: '#531dab', color: '#fff' };
+    case 'Директор':
+      return { ...baseStyle, borderColor: '#eb2f96', background: '#c41d7f', color: '#fff' };
+    // Добавить стили для других атрибутов из Enum
+    default:
+      return { ...baseStyle, borderColor: '#d9d9d9', background: '#8c8c8c', color: '#fff' };
+  }
 };
 
-const divisionNodeStyle = { ...baseNodeStyle, borderColor: '#1890ff' };
-const positionNodeStyle = { ...baseNodeStyle, borderColor: '#52c41a' };
+interface FilterFormValues {
+  organization_id?: number;
+  root_position_id?: number;
+  depth?: number;
+}
+
+// Определение кастомного узла
+interface CustomNodeData {
+  label: string;
+  attribute: string;
+  db_id: number;
+  staff?: {
+    id: number;
+    name: string;
+    position?: string;
+    email?: string;
+  }[];
+}
+
+const CustomNode: React.FC<{ data: CustomNodeData }> = ({ data }) => {
+  const style = getNodeStyle(data.attribute);
+  
+  return (
+    <div style={style}>
+      <Handle type="target" position={RFPosition.Top} />
+      
+      <div style={{ marginBottom: '5px', fontWeight: 'bold' }}>
+        {data.label}
+      </div>
+      
+      {data.staff && data.staff.length > 0 ? (
+        <div style={{ fontSize: '11px', textAlign: 'left', marginTop: '8px', borderTop: '1px dashed rgba(255,255,255,0.3)', paddingTop: '5px' }}>
+          {data.staff.map((person, idx) => (
+            <Tooltip key={idx} title={person.email || ''}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+                <UserOutlined style={{ marginRight: '4px', fontSize: '10px' }} />
+                <span>{person.name}</span>
+              </div>
+            </Tooltip>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: '10px', opacity: 0.7, fontStyle: 'italic', marginTop: '5px' }}>
+          (вакансия)
+        </div>
+      )}
+      
+      <Handle type="source" position={RFPosition.Bottom} />
+    </div>
+  );
+};
+
+// Определение типов узлов
+const nodeTypes: NodeTypes = {
+  custom: CustomNode,
+};
 
 const StructureChartPage: React.FC = () => {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node[]>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [useDirectOrgTree, setUseDirectOrgTree] = useState(true); // Флаг для переключения метода загрузки
+  const [showFilters, setShowFilters] = useState(false);
+  const [organizations, setOrganizations] = useState<OrganizationDTO[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [filters, setFilters] = useState<FilterFormValues>({});
+  const [filterForm] = Form.useForm();
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Функция трансформации данных
-  const transformDataToFlow = useCallback((divisions: Division[], positions: Position[]) => {
-      const flowNodes: any[] = [];
-      const flowEdges: any[] = [];
-      const nodeIds = new Set<string>(); // Для проверки существования узлов перед добавлением ребер
+  // Загрузка списков для фильтров
+  useEffect(() => {
+    const fetchFilterData = async () => {
+      try {
+        const [orgsData, positionsData] = await Promise.all([
+          organizationService.getAllOrganizations(),
+          getAllPositions()
+        ]);
+        setOrganizations(orgsData);
+        setPositions(positionsData);
+      } catch (err) {
+        console.error("[LOG:Chart] Error fetching filter data:", err);
+        message.error('Ошибка загрузки данных для фильтров.');
+      }
+    };
+    
+    fetchFilterData();
+  }, []);
 
-      // 1. Создаем узлы для Подразделений
-      divisions.forEach(div => {
-          const nodeId = `div-${div.id}`;
-          flowNodes.push({
-              id: nodeId,
-              data: { label: div.name, type: 'division', code: div.code },
-              position: { x: 0, y: 0 }, 
-              style: divisionNodeStyle,
-          });
-          nodeIds.add(nodeId);
-      });
+  // Функция трансформации данных (для старого метода)
+  const transformDataToFlow = useCallback((positions: Position[], relations: HierarchyRelation[]) => {
+    const flowNodes: Node[] = [];
+    const flowEdges: Edge[] = [];
 
-      // 2. Создаем узлы для Должностей
-      positions.forEach(pos => {
-          const nodeId = `pos-${pos.id}`;
-          flowNodes.push({
-              id: nodeId,
-              data: { label: pos.name, type: 'position', code: pos.code },
-              position: { x: 0, y: 0 }, 
-              style: positionNodeStyle,
-          });
-           nodeIds.add(nodeId);
+    // 1. Создаем узлы для Должностей
+    positions.forEach(pos => {
+      const nodeId = `pos-${pos.id}`;
+      flowNodes.push({
+        id: nodeId,
+        type: 'custom', // Используем кастомный тип узла
+        data: { 
+          label: pos.name, 
+          attribute: pos.attribute,
+          db_id: pos.id,
+          // Временно пустой список сотрудников, можно будет загрузить в отдельном запросе
+          staff: []
+        },
+        position: { x: 0, y: 0 }, // Позиции будут установлены dagre
       });
-      
-      // 3. Создаем ребра для Подразделений (после создания всех узлов)
-      divisions.forEach(div => {
-           if (div.parent_id) {
-              const sourceId = `div-${div.parent_id}`;
-              const targetId = `div-${div.id}`;
-              // Проверяем существование узлов и отсутствие петли
-              if (nodeIds.has(sourceId) && nodeIds.has(targetId) && sourceId !== targetId) {
-                  flowEdges.push({
-                      id: `e_div_${div.parent_id}_${div.id}`,
-                      source: sourceId,
-                      target: targetId,
-                      type: 'smoothstep',
-                      markerEnd: { type: MarkerType.ArrowClosed },
-                      style: { stroke: '#aaa' }
-                  });
-              } else {
-                   console.warn(`[LOG:Chart] Edge skipped: div parent relation ${sourceId} -> ${targetId} (nodes exist: ${nodeIds.has(sourceId)}, ${nodeIds.has(targetId)})`);
-              }
-          }
-      });
-      
-       // 4. Создаем ребра для Должностей (после создания всех узлов)
-       positions.forEach(pos => {
-           // Ребро к родительской должности
-           if (pos.parent_id) {
-               const sourceId = `pos-${pos.parent_id}`;
-               const targetId = `pos-${pos.id}`;
-                if (nodeIds.has(sourceId) && nodeIds.has(targetId) && sourceId !== targetId) {
-                   flowEdges.push({
-                      id: `e_pos_${pos.parent_id}_${pos.id}`,
-                      source: sourceId,
-                      target: targetId,
-                      type: 'smoothstep',
-                      markerEnd: { type: MarkerType.ArrowClosed },
-                      style: { stroke: '#52c41a' } 
-                  });
-                } else {
-                    console.warn(`[LOG:Chart] Edge skipped: pos parent relation ${sourceId} -> ${targetId} (nodes exist: ${nodeIds.has(sourceId)}, ${nodeIds.has(targetId)})`);
-                }
-            }
-            // Ребро к подразделению
-            if (pos.division_id) {
-                 const sourceId = `div-${pos.division_id}`;
-                 const targetId = `pos-${pos.id}`;
-                 if (nodeIds.has(sourceId) && nodeIds.has(targetId) && sourceId !== targetId) {
-                     flowEdges.push({
-                        id: `e_div_${pos.division_id}_pos_${pos.id}`,
-                        source: sourceId,
-                        target: targetId,
-                        type: 'smoothstep',
-                        markerEnd: { type: MarkerType.ArrowClosed, color: '#1890ff' },
-                        style: { stroke: '#1890ff' } 
-                    });
-                 } else {
-                     console.warn(`[LOG:Chart] Edge skipped: pos division relation ${sourceId} -> ${targetId} (nodes exist: ${nodeIds.has(sourceId)}, ${nodeIds.has(targetId)})`);
-                 }
-            }
+    });
+
+    // 2. Создаем ребра на основе Hierarchy Relations
+    relations.forEach(rel => {
+      const sourceId = `pos-${rel.superior_position_id}`;
+      const targetId = `pos-${rel.subordinate_position_id}`;
+      // Проверяем, что оба узла существуют в нашем списке flowNodes
+      if (flowNodes.some(n => n.id === sourceId) && flowNodes.some(n => n.id === targetId)) {
+        flowEdges.push({
+          id: `e_rel_${rel.id}`,
+          source: sourceId,
+          target: targetId,
+          type: 'smoothstep', // Или другой тип ребра
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { stroke: '#aaa' } // Базовый стиль ребра
         });
+      } else {
+          console.warn(`[LOG:Chart] Edge skipped: hierarchy relation ${sourceId} -> ${targetId} (one or both nodes missing in initial list)`);
+      }
+    });
 
-      // TODO: Можно добавить обработку functional_relations для других типов связей
+    console.log('[LOG:Chart] Transformed Nodes:', flowNodes);
+    console.log('[LOG:Chart] Transformed Edges:', flowEdges);
 
-      return { nodes: flowNodes, edges: flowEdges };
+    // Применяем раскладку Dagre
+    const layouted = getLayoutedElements(flowNodes, flowEdges);
+    
+    return layouted; // Возвращаем узлы и ребра с позициями
 
   }, []);
 
-  // Загрузка и обработка данных
-  const fetchData = useCallback(async () => {
+  // Загрузка и обработка данных (новый метод с прямым получением дерева)
+  const fetchDirectOrgTree = useCallback(async () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -234,133 +295,306 @@ const StructureChartPage: React.FC = () => {
     const signal = abortControllerRef.current.signal;
 
     setLoading(true);
+    setError(null);
     try {
-      // Загружаем все необходимые данные
-      const [divResponse, posResponse, staffResponse, relResponse] = await Promise.all([
-        api.get('/divisions/', { signal }),
-        api.get('/positions/', { signal }),
-        api.get('/staff/', { signal }),
-        api.get('/functional-relations/', { signal })
-      ]);
+      console.log('[LOG:Chart] Fetching org tree directly with filters:', filters);
       
-      const divisions: Division[] = divResponse.data;
-      const positions: Position[] = posResponse.data;
-      const staff: Staff[] = staffResponse.data;
-      const relations: FunctionalRelation[] = relResponse.data;
+      // Загружаем готовое дерево с бэкенда
+      const orgTreeData = await orgTreeService.getOrgTree(filters);
+      
+      if (signal.aborted) return;
 
-      console.log('[LOG:Chart] Data loaded:', { divisions, positions, staff, relations });
-
-      // Трансформируем данные
-      const { nodes: initialNodes, edges: initialEdges } = transformDataToFlow(divisions, positions);
-
-      if (initialNodes.length === 0) {
-          message.info('Нет данных для отображения схемы (подразделения или должности отсутствуют).');
-           setNodes([{ id: 'empty', position: { x: 0, y: 0 }, data: { label: 'Нет данных' }, style: baseNodeStyle }]);
-           setEdges([]);
-           return; // Выходим, если данных нет
+      console.log('[LOG:Chart] Org tree fetched directly:', orgTreeData);
+      
+      // Собираем ID всех должностей для загрузки сотрудников
+      const positionIds = orgTreeData.nodes
+        .map(node => node.data.db_id)
+        .filter((id): id is number => id !== undefined); // Фильтруем undefined
+      
+      // Пробуем загрузить данные о сотрудниках для всех должностей
+      let staffByPosition: Record<number, any[]> = {};
+      try {
+        staffByPosition = await staffService.getStaffForOrgChart(positionIds);
+        console.log('[LOG:Chart] Staff data loaded:', staffByPosition);
+      } catch (staffError) {
+        console.error('[LOG:Chart] Error loading staff data:', staffError);
+        // Продолжаем без данных о сотрудниках
       }
-
-      // Рассчитываем позиции с помощью dagre
-      const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-        initialNodes,
-        initialEdges
-      );
-
-      // Проверяем, была ли ошибка в layout
-      const layoutHasError = layoutedNodes.some(node => node.data.layoutError);
       
+      // Стилизуем ноды и добавляем тип "custom" ко всем узлам
+      const styledNodes = orgTreeData.nodes.map(node => {
+        // Форматируем информацию о сотрудниках для узла
+        const positionStaff = staffByPosition[node.data.db_id] || [];
+        
+        // Преобразуем данные сотрудников в формат для отображения в узле
+        const staffForNode = positionStaff.map(staff => ({
+          id: staff.id,
+          name: `${staff.last_name} ${staff.first_name.charAt(0)}.`,  // Фамилия И.
+          position: staff.position,
+          email: staff.email
+        }));
+        
+        return {
+          ...node,
+          type: 'custom', // Устанавливаем кастомный тип для всех узлов
+          data: {
+            ...node.data,
+            staff: staffForNode
+          }
+        };
+      });
+      
+      // Применяем расположение с помощью dagre
+      const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+        styledNodes, 
+        orgTreeData.edges
+      );
+      
+      console.log('[LOG:Chart] Setting layouted nodes and edges from direct org tree');
       setNodes(layoutedNodes);
       setEdges(layoutedEdges);
-      
-      // Показываем success только если не было ошибки layout
-      if (!layoutHasError) {
-          message.success('Схема структуры построена.');
-      } 
-      // message.error об ошибке layout покажется внутри getLayoutedElements
 
-    } catch (error: any) {
-      // Игнорируем ошибки отмены запроса
-      if (error.name !== 'AbortError') {
-          console.error('[LOG:Chart] Ошибка при загрузке или обработке данных:', error);
-          message.error('Ошибка при построении схемы.');
-           setNodes([{ id: 'error', position: { x: 0, y: 0 }, data: { label: 'Ошибка построения схемы' }, style: { ...baseNodeStyle, borderColor: 'red' } }]);
-           setEdges([]);
-      } else {
-          console.log('[LOG:Chart] Fetch aborted, ignoring.'); // Логируем отмену
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('[LOG:Chart] Direct org tree fetch aborted');
+        return;
       }
+      console.error("[LOG:Chart] Error fetching direct org tree:", err);
+      setError('Ошибка при загрузке дерева организационной структуры.');
+      message.error('Ошибка загрузки дерева структуры.');
+      
+      // Попробуем запасной метод
+      setUseDirectOrgTree(false);
+      fetchLegacyData();
     } finally {
-       if (!signal.aborted) {
-          setLoading(false);
-          abortControllerRef.current = null;
+      if (!signal.aborted) {
+        setLoading(false);
       }
     }
-  }, [setNodes, setEdges, transformDataToFlow]);
+  }, [filters, setNodes, setEdges]);
 
-  // Используем useLayoutEffect для запуска fitView после рендера и расчета layout
-  useLayoutEffect(() => {
-      // Тут можно было бы вызвать fitView, но react-flow v11 делает это автоматически при initial Nodes/Edges
-      // Если авто-масштабирование не сработает, можно будет добавить instance.fitView()
-  }, [nodes, edges]); // Зависит от nodes и edges
+  // Альтернативный метод загрузки (старый, через отдельные запросы)
+  const fetchLegacyData = useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
 
+    setLoading(true);
+    setError(null);
+    try {
+      console.log('[LOG:Chart] Fetching positions and relations...');
+      // Загружаем только должности и иерархические связи
+      const [positions, relations] = await Promise.all([
+        getAllPositions(/* { signal } - если сервис поддерживает AbortSignal */),
+        getAllHierarchyRelations(/* { signal } */)
+      ]);
+      console.log('[LOG:Chart] Positions fetched:', positions);
+      console.log('[LOG:Chart] Relations fetched:', relations);
+
+      if (signal.aborted) return; // Проверяем, не был ли запрос отменен
+
+      // Трансформируем данные и применяем layout
+      const { nodes: layoutedNodes, edges: layoutedEdges } = transformDataToFlow(positions, relations);
+      
+      console.log('[LOG:Chart] Setting layouted nodes and edges');
+      setNodes(layoutedNodes);
+      setEdges(layoutedEdges);
+
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('[LOG:Chart] Legacy fetch aborted');
+        return;
+      }
+      console.error("[LOG:Chart] Error fetching or processing legacy data:", err);
+      setError('Не удалось загрузить или обработать данные для схемы.');
+      message.error('Ошибка загрузки данных для схемы.');
+      setNodes([]); // Очищаем узлы при ошибке
+      setEdges([]); // Очищаем ребра при ошибке
+    } finally {
+      if (!signal.aborted) {
+        setLoading(false);
+      }
+    }
+  }, [transformDataToFlow, setNodes, setEdges]);
+
+  // Выбираем метод загрузки данных
+  const fetchData = useCallback(() => {
+    if (useDirectOrgTree) {
+      fetchDirectOrgTree();
+    } else {
+      fetchLegacyData();
+    }
+  }, [useDirectOrgTree, fetchDirectOrgTree, fetchLegacyData]);
+
+  // Обработчик применения фильтров
+  const handleFilterApply = (values: FilterFormValues) => {
+    console.log('[LOG:Chart] Applying filters:', values);
+    setFilters(values);
+    // Закрываем панель фильтров
+    setShowFilters(false);
+  };
+
+  // Обработчик сброса фильтров
+  const handleFilterReset = () => {
+    filterForm.resetFields();
+    setFilters({});
+    message.success('Фильтры сброшены');
+    // Не закрываем панель фильтров
+  };
+
+  // Загрузка данных при монтировании компонента или изменении фильтров
   useEffect(() => {
     fetchData();
+    // Очистка при размонтировании
     return () => {
-      abortControllerRef.current?.abort();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
-  }, [fetchData]);
+  }, [fetchData, filters]); // Добавляем filters в зависимости
 
   return (
-    <Space direction="vertical" style={{ width: '100%', height: 'calc(100vh - 150px)', display: 'flex', flexDirection: 'column' }}>
-      <Title level={2}>Визуальная схема структуры</Title>
-      <Space style={{ marginBottom: 16 }}>
-        <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
-          Обновить данные
-        </Button>
-         {/* Можно добавить кнопки для управления раскладкой, если будем использовать dagre */} 
-      </Space>
-
-       <Alert 
-          message="Информация"
-          description="Отображены подразделения (синие) и должности (зеленые). Связи: родительское подразделение (серое), родительская должность (зеленое), принадлежность должности к подразделению (синее)."
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
+    <div style={{ height: '85vh', width: '100%', background: '#f0f2f5', padding: '20px' }}>
+      <Space direction="vertical" style={{ width: '100%' }} size="large">
+        <Space style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+            <Title level={3}>Визуальная Схема Организационной Структуры</Title>
+            <div>
+              <Button 
+                  icon={<FilterOutlined />} 
+                  onClick={() => setShowFilters(!showFilters)}
+                  style={{ marginRight: 10 }}
+              >
+                  {showFilters ? 'Скрыть фильтры' : 'Показать фильтры'}
+              </Button>
+              <Button 
+                  icon={<ReloadOutlined />} 
+                  onClick={fetchData} 
+                  loading={loading}
+                  disabled={loading}
+                  style={{ marginRight: 10 }}
+              >
+                  Обновить
+              </Button>
+              <Button 
+                  onClick={() => {
+                    setUseDirectOrgTree(!useDirectOrgTree);
+                    message.info(`Переключено на ${!useDirectOrgTree ? 'новый' : 'старый'} метод загрузки`);
+                  }}
+                  disabled={loading}
+              >
+                  {useDirectOrgTree ? 'Старый метод' : 'Новый метод'}
+              </Button>
+            </div>
+        </Space>
         
-      <div style={{ flexGrow: 1, width: '100%', height: '800px', position: 'relative' }}>
-        {loading && (
-          <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            background: 'rgba(255, 255, 255, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10
-          }}>
-            <Spin size="large" />
-          </div>
+        {/* Блок фильтров */}
+        {showFilters && (
+          <Card title="Фильтры" style={{ width: '100%' }}>
+            <Form 
+              form={filterForm}
+              layout="vertical" 
+              onFinish={handleFilterApply}
+              initialValues={filters}
+            >
+              <Row gutter={16}>
+                <Col xs={24} sm={12} md={8}>
+                  <Form.Item 
+                    name="organization_id" 
+                    label="Организация"
+                  >
+                    <Select 
+                      allowClear
+                      placeholder="Выберите организацию"
+                      style={{ width: '100%' }}
+                    >
+                      {organizations.map(org => (
+                        <Select.Option key={org.id} value={org.id}>
+                          {org.name}
+                        </Select.Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12} md={8}>
+                  <Form.Item 
+                    name="root_position_id" 
+                    label="Корневая должность"
+                  >
+                    <Select 
+                      allowClear
+                      placeholder="Выберите должность"
+                      style={{ width: '100%' }}
+                      showSearch
+                      optionFilterProp="children"
+                    >
+                      {positions.map(pos => (
+                        <Select.Option key={pos.id} value={pos.id}>
+                          {pos.name}
+                        </Select.Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12} md={8}>
+                  <Form.Item 
+                    name="depth" 
+                    label="Глубина дерева"
+                    help="Оставьте пустым для отображения полного дерева"
+                  >
+                    <InputNumber 
+                      min={0} 
+                      max={10}
+                      placeholder="Глубина"
+                      style={{ width: '100%' }}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row justify="end" gutter={16}>
+                <Col>
+                  <Button onClick={handleFilterReset}>
+                    Сбросить
+                  </Button>
+                </Col>
+                <Col>
+                  <Button type="primary" htmlType="submit">
+                    Применить
+                  </Button>
+                </Col>
+              </Row>
+            </Form>
+          </Card>
         )}
-        <ReactFlowProvider> 
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            fitView
-            style={{ width: '100%', height: '100%', background: '#f9f9f9' }}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Controls />
-            <MiniMap nodeStrokeWidth={3} zoomable pannable />
-            <Background gap={16} />
-          </ReactFlow>
-        </ReactFlowProvider>
-      </div>
-    </Space>
+        
+        {error && <Alert message={error} type="error" showIcon closable onClose={() => setError(null)} />} 
+
+        <div style={{ height: 'calc(85vh - 100px)', border: '1px solid #d9d9d9', background: 'white' }}>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+              <Spin size="large" tip="Загрузка схемы..." />
+            </div>
+          ) : (
+            <ReactFlowProvider> 
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                nodeTypes={nodeTypes}
+                fitView
+                // fitViewOptions={{ padding: 0.1 }}
+              >
+                <Controls />
+                <MiniMap nodeStrokeWidth={3} zoomable pannable />
+                <Background gap={16} />
+              </ReactFlow>
+            </ReactFlowProvider>
+          )}
+        </div>
+      </Space>
+    </div>
   );
 };
 

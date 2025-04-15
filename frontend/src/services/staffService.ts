@@ -161,6 +161,49 @@ const staffService = {
       console.error(`Ошибка при удалении сотрудника с ID ${id}:`, error);
       throw error;
     }
+  },
+
+  /**
+   * Получить сотрудников по должности
+   */
+  async getStaffByPosition(positionId: number): Promise<StaffMember[]> {
+    try {
+      const { data } = await api.get(`/staff/by-position/${positionId}`);
+      return data;
+    } catch (error) {
+      console.error(`Ошибка при получении сотрудников по должности ${positionId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Получить данные сотрудников для организационного графа
+   * @param positionIds массив ID должностей
+   */
+  async getStaffForOrgChart(positionIds: number[]): Promise<Record<number, StaffMember[]>> {
+    try {
+      // Если API поддерживает множественные запросы - используем его
+      const { data } = await api.post('/staff/by-positions', { position_ids: positionIds });
+      return data;
+    } catch (error) {
+      // Если API не поддерживает множественные запросы, сделаем запросы по одному
+      console.warn('Используем резервный метод загрузки сотрудников по должностям', error);
+      
+      const staffByPosition: Record<number, StaffMember[]> = {};
+      await Promise.all(
+        positionIds.map(async (posId) => {
+          try {
+            const staff = await this.getStaffByPosition(posId);
+            staffByPosition[posId] = staff;
+          } catch (err) {
+            console.error(`Ошибка при загрузке сотрудников для должности ${posId}:`, err);
+            staffByPosition[posId] = []; // Пустой массив для должностей без сотрудников
+          }
+        })
+      );
+      
+      return staffByPosition;
+    }
   }
 };
 
