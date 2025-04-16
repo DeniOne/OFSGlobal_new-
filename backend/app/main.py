@@ -1,3 +1,5 @@
+import logging
+import traceback
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
@@ -9,9 +11,23 @@ import os
 
 from app.api.api_v1.api import api_router
 from app.core.config import settings
+from app.api.deps import get_db
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("app")
+
+# Создаем приложение
 app = FastAPI(
-    title=settings.PROJECT_NAME, openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    title="OFS Global API",
+    description="Гибкое API для OFS Global",
+    version="2.0.0"
 )
 
 # Middleware для установки правильной кодировки UTF-8
@@ -35,10 +51,10 @@ async def unicode_exception_handler(request: Request, exc: Exception):
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
 
-# Настройка CORS - разрешаем все источники для отладки
+# Настройка CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3004"],  # Только наш фронтенд
+    allow_origins=["http://localhost:3000", "http://localhost:3003", "http://127.0.0.1:3000", "http://127.0.0.1:3003"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,23 +63,43 @@ app.add_middleware(
 # Добавляем middleware для кодировки
 app.add_middleware(CharsetMiddleware)
 
-app.include_router(api_router, prefix=settings.API_V1_STR)
+# Добавляем middleware для глобальной обработки ошибок
+@app.middleware("http")
+async def log_exceptions(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as e:
+        logger.error(f"Ошибка при обработке запроса {request.url}: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise
+
+# Включаем все роутеры из api_v1
+app.include_router(api_router, prefix="/api/v1")
 
 @app.on_event("startup")
-async def startup_event():
-    """
-    При запуске приложения создаем директории для загрузки файлов
-    """
-    # Создаем основную директорию для загрузок
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    
-    # Создаем поддиректории для различных типов файлов
-    os.makedirs(os.path.join(settings.UPLOAD_DIR, "photos"), exist_ok=True)
-    os.makedirs(os.path.join(settings.UPLOAD_DIR, "documents"), exist_ok=True)
+def startup_event():
+    """Выполняется при запуске сервера."""
+    logger.info("Сервер API OFS запущен и готов к работе!")
 
 @app.get("/")
-def read_root():
-    return {"message": "Добро пожаловать в API системы управления организационной структурой OFS Global"}
+async def root():
+    return {"message": "Добро пожаловать в OFS Global API!"}
+
+# Тестовый маршрут для отображения всех зарегистрированных маршрутов
+@app.get("/routes")
+async def get_routes():
+    """
+    Возвращает список всех зарегистрированных маршрутов в приложении
+    """
+    routes = []
+    for route in app.routes:
+        routes.append({
+            "path": getattr(route, "path", ""),
+            "name": getattr(route, "name", ""),
+            "methods": getattr(route, "methods", []),
+            "endpoint": str(getattr(route, "endpoint", ""))
+        })
+    return {"routes": routes}
 
 # Добавляем тестовый роут для создания организации напрямую
 @app.post("/test-create-org/")

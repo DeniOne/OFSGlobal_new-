@@ -5,15 +5,22 @@ from sqlalchemy import pool
 
 from alembic import context
 
-# Импортируем Base и только Organization
+# Импортируем все модели из base.py
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.db.base_class import Base
+from app.db.base import Base
+# Импортируем все модели для автогенерации миграций
 from app.models.organization import Organization
-# Закомментировали неиспользуемые импорты
-# from app.models.staff import Staff
-# from app.models.division import Division
+from app.models.division import Division
+from app.models.section import Section
+from app.models.staff import Staff
+from app.models.position import Position
+from app.models.function import Function
+from app.models.staff_function import StaffFunction
+from app.models.functional_relation import FunctionalRelation
+from app.models.user import User
+from app.models.item import Item
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

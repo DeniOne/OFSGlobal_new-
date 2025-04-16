@@ -2,7 +2,7 @@ import api from './api';
 import { EntityNode, EntityRelation, RelationType } from '../components/organization/types';
 
 // Интерфейсы для данных с API
-interface OrganizationDTO {
+export interface OrganizationDTO {
   id: number;
   name: string;
   description?: string;
@@ -300,6 +300,17 @@ const organizationService = {
       await api.delete(endpoint);
     } catch (error) {
       console.error('Ошибка при удалении узла:', error);
+      throw error;
+    }
+  },
+  
+  // Получение всех организаций
+  async getAllOrganizations(): Promise<OrganizationDTO[]> {
+    try {
+      const response = await api.get('/organizations');
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при получении списка организаций:', error);
       throw error;
     }
   },

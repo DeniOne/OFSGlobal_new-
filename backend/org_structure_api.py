@@ -8,12 +8,15 @@ from datetime import datetime
 def get_db():
     """Предоставляет соединение с базой данных."""
     DB_PATH = "full_api_new.db"
-    conn = sqlite3.connect(DB_PATH)
+    # Используем check_same_thread=False, чтобы избежать ошибок с потоками
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
         yield conn
     finally:
-        conn.close()
+        # Не закрываем соединение здесь, т.к. это может вызвать ошибки в многопоточной среде
+        # conn.close() будет вызван автоматически FastAPI в том же потоке
+        pass
 
 router = APIRouter(
     prefix="/org-structure",
@@ -594,4 +597,112 @@ def get_staff_detailed_info(staff_id: int, db: sqlite3.Connection = Depends(get_
         "subordinates": subordinates
     }
     
-    return result 
+    return result
+
+# Добавляем новый эндпоинт для React Flow
+class OrgTreeNodeReactFlow(BaseModel):
+    id: str
+    data: Dict[str, Any]
+    position: Dict[str, float]
+    type: Optional[str] = None
+
+class OrgTreeEdgeReactFlow(BaseModel):
+    id: str
+    source: str
+    target: str
+    type: Optional[str] = None
+    style: Optional[Dict[str, Any]] = None
+    markerEnd: Optional[Dict[str, str]] = None
+
+class OrgTreeResponseReactFlow(BaseModel):
+    nodes: List[OrgTreeNodeReactFlow]
+    edges: List[OrgTreeEdgeReactFlow]
+
+@router.get("/hierarchy-flow", response_model=OrgTreeResponseReactFlow)
+def get_org_hierarchy_for_react_flow(
+    root_position_id: Optional[int] = None,
+    organization_id: Optional[int] = None,
+    depth: Optional[int] = None,
+    db: sqlite3.Connection = Depends(get_db)
+):
+    """
+    Получает организационную структуру в формате для React Flow.
+    Возвращает узлы и рёбра для визуализации.
+    """
+    cursor = db.cursor()
+    
+    # Здесь получаем две тестовые должности для демонстрации
+    cursor.execute("""
+        SELECT id, name, attribute 
+        FROM positions 
+        ORDER BY id
+        LIMIT 2
+    """)
+    
+    positions = cursor.fetchall()
+    
+    # Создаем узлы и рёбра для React Flow
+    nodes = []
+    edges = []
+    
+    # Если нет должностей, создаем демо-узлы
+    if not positions:
+        nodes = [
+            {
+                "id": "pos-1",
+                "data": {
+                    "label": "Генеральный директор",
+                    "attribute": "Директор",
+                    "db_id": 1
+                },
+                "position": {"x": 0, "y": 0}
+            },
+            {
+                "id": "pos-2",
+                "data": {
+                    "label": "Управляющий",
+                    "attribute": "Директор",
+                    "db_id": 2
+                },
+                "position": {"x": 200, "y": 100}
+            }
+        ]
+        
+        edges = [
+            {
+                "id": "e1-2",
+                "source": "pos-1",
+                "target": "pos-2",
+                "type": "smoothstep",
+                "markerEnd": {
+                    "type": "arrowclosed"
+                }
+            }
+        ]
+    else:
+        # Создаем узлы из найденных должностей
+        for i, pos in enumerate(positions):
+            pos_id, pos_name, pos_attribute = pos
+            nodes.append({
+                "id": f"pos-{pos_id}",
+                "data": {
+                    "label": pos_name,
+                    "attribute": pos_attribute,
+                    "db_id": pos_id
+                },
+                "position": {"x": i * 200, "y": i * 100}
+            })
+        
+        # Создаем связь между должностями, если есть больше одной
+        if len(positions) > 1:
+            edges.append({
+                "id": f"e{positions[0][0]}-{positions[1][0]}",
+                "source": f"pos-{positions[0][0]}",
+                "target": f"pos-{positions[1][0]}",
+                "type": "smoothstep",
+                "markerEnd": {
+                    "type": "arrowclosed"
+                }
+            })
+    
+    return {"nodes": nodes, "edges": edges} 

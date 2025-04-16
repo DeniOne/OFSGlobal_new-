@@ -7,7 +7,7 @@ param(
 )
 
 # Устанавливаем пароль
-$env:PGPASSWORD = "QAZwsxr`$t5"
+$env:PGPASSWORD = "111"
 
 # Выполнение команды psql
 & psql -h localhost -U postgres -d ofs_db -c "$Command"

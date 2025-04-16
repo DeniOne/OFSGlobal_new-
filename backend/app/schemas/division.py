@@ -3,17 +3,20 @@ from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
 
 
-# Базовая схема для Division
+# Модели для Division (Подразделение)
 class DivisionBase(BaseModel):
     """
     Базовые атрибуты для подразделений.
     """
     name: str = Field(..., description="Название подразделения")
+    code: str
     description: Optional[str] = Field(None, description="Описание подразделения")
     is_active: bool = Field(True, description="Активно/Неактивно")
     
     # Связи с другими моделями
     organization_id: int = Field(..., description="ID организации")
+    parent_id: Optional[int] = Field(None, description="ID родительского подразделения")
+    ckp: Optional[str] = Field(None, description="КП подразделения")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -35,6 +38,8 @@ class DivisionUpdate(DivisionBase):
     description: Optional[str] = None
     is_active: Optional[bool] = None
     organization_id: Optional[int] = None
+    parent_id: Optional[int] = None
+    ckp: Optional[str] = None
 
 
 # Схема для отображения подразделения

@@ -8,4 +8,8 @@ from app.models.position import Position  # noqa
 from app.models.staff import Staff  # noqa
 from app.models.user import User  # noqa
 from app.models.functional_relation import FunctionalRelation  # noqa
-from app.models.item import Item  # noqa 
+from app.models.item import Item  # noqa
+from app.models.functional_assignment import FunctionalAssignment  # noqa
+from app.models.staff_function import StaffFunction  # noqa
+from app.models.staff_location import StaffLocation  # noqa
+from app.models.location import Location  # noqa 

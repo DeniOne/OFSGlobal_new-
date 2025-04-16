@@ -3,6 +3,8 @@ from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
 
+from .enums import RelationType
+
 
 class RelationType(str, Enum):
     FUNCTIONAL = "functional"
@@ -16,13 +18,13 @@ class RelationType(str, Enum):
     SUPERVISORY = "supervisory"
 
 
-# Базовая схема для функциональных отношений
+# Модели для Functional_Relation (Функциональные отношения)
 class FunctionalRelationBase(BaseModel):
-    subordinate_id: int
-    relation_type: RelationType = RelationType.FUNCTIONAL
+    manager_id: int  # Руководитель
+    subordinate_id: int  # Подчиненный
+    relation_type: RelationType
     description: Optional[str] = None
-
-    model_config = ConfigDict(from_attributes=True)
+    is_active: bool = True
 
 
 # Схема для создания функциональной связи
@@ -39,9 +41,11 @@ class FunctionalRelationUpdate(FunctionalRelationBase):
 # Схема для чтения данных функциональной связи
 class FunctionalRelation(FunctionalRelationBase):
     id: int
-    manager_id: int
     created_at: datetime
     updated_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 
 # Схема для представления в БД

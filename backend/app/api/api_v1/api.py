@@ -2,29 +2,42 @@ from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.encoders import jsonable_encoder
 
-from app.api.api_v1.endpoints import (
-    items, login, users, organizations,
-    telegram_bot, positions, division, staff, functional_relations
+from app.api.endpoints import (
+    auth,
+    organizations,
+    divisions,
+    sections,
+    positions,
+    functions,
+    staff,
+    staff_positions,
+    functional_relations,
+    functional_assignments,
+    staff_functions,
+    staff_locations,
+    value_functions
 )
 
 api_router = APIRouter()
 
-# Базовые модули
-api_router.include_router(login.router, tags=["login"])
-api_router.include_router(users.router, prefix="/users", tags=["users"])
-api_router.include_router(items.router, prefix="/items", tags=["items"])
-api_router.include_router(organizations.router, prefix="/organizations", tags=["organizations"])
+# Аутентификация
+api_router.include_router(auth.router, tags=["authentication"])
 
-# Бизнес-модули
-api_router.include_router(
-    telegram_bot.router,
-    prefix="/telegram-bot",
-    tags=["telegram-bot"]
-)
+# Основные сущности ОФС
+api_router.include_router(organizations.router, prefix="/organizations", tags=["organizations"])
+api_router.include_router(divisions.router, prefix="/divisions", tags=["divisions"])
+api_router.include_router(sections.router, prefix="/sections", tags=["sections"])
 api_router.include_router(positions.router, prefix="/positions", tags=["positions"])
-api_router.include_router(division.router, prefix="/divisions", tags=["divisions"])
+api_router.include_router(functions.router, prefix="/functions", tags=["functions"])
 api_router.include_router(staff.router, prefix="/staff", tags=["staff"])
+api_router.include_router(value_functions.router, prefix="/value-functions", tags=["value-functions"])
+
+# Связи и отношения
+api_router.include_router(staff_positions.router, prefix="/staff-positions", tags=["staff-positions"])
 api_router.include_router(functional_relations.router, prefix="/functional-relations", tags=["functional-relations"])
+api_router.include_router(functional_assignments.router, prefix="/functional-assignments", tags=["functional-assignments"])
+api_router.include_router(staff_functions.router, prefix="/staff-functions", tags=["staff-functions"])
+api_router.include_router(staff_locations.router, prefix="/staff-locations", tags=["staff-locations"])
 
 # Редиректы для обратной совместимости
 @api_router.get("/staff/{path:path}", include_in_schema=False)

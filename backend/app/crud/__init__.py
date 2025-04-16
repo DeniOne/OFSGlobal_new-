@@ -1,5 +1,13 @@
 from .crud_division import division
-# from .crud_staff import staff
+from .crud_staff import staff
 from .crud_functional_relation import functional_relation
 from .crud_position import crud_position
-from .crud_organization import organization 
+from .crud_organization import organization
+from .crud_section import section
+from .crud_staff_position import staff_position
+from .crud_function import function
+from .crud_location import location
+from .crud_value_function import value_function
+from .crud_staff_function import staff_function
+from .crud_staff_location import staff_location
+from .crud_functional_assignment import functional_assignment 

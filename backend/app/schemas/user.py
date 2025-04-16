@@ -1,40 +1,39 @@
-from typing import Optional, List
-from pydantic import BaseModel, EmailStr, ConfigDict
-
-from .item import Item
+from typing import Optional
+from pydantic import BaseModel, EmailStr
 
 
 # Общие свойства
 class UserBase(BaseModel):
     email: Optional[EmailStr] = None
     is_active: Optional[bool] = True
-    is_superuser: bool = False
+    is_superuser: Optional[bool] = False
     full_name: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
 
-
-# Свойства для создания пользователя
+# Свойства для создания через API
 class UserCreate(UserBase):
     email: EmailStr
     password: str
 
 
-# Свойства для обновления пользователя
+# Свойства для обновления через API
 class UserUpdate(UserBase):
     password: Optional[str] = None
 
 
-# Свойства для пользователя в БД
+# Свойства, хранящиеся в БД
 class UserInDBBase(UserBase):
     id: Optional[int] = None
 
+    class Config:
+        from_attributes = True
 
-# Свойства дополнительные для ответа API
+
+# Свойства, возвращаемые через API
 class User(UserInDBBase):
     pass
 
 
-# Свойства, хранящиеся в БД
+# Свойства, хранящиеся в БД, включая хеш пароля
 class UserInDB(UserInDBBase):
     hashed_password: str 

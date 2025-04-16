@@ -1,0 +1,1 @@
+Ошибка при проверке базы данных: connection was closed in the middle of operation

@@ -1,381 +1,128 @@
-# Документация по API-эндпоинтам OFS Global
+# API эндпоинты OFS Global
 
-## Базовый URL API
+## Базовая информация
 
-```
-/api/v1
-```
+- **Базовый URL:** `http://localhost:8001`
+- **Swagger UI:** `http://localhost:8001/docs`
+- **ReDoc:** `http://localhost:8001/redoc`
 
 ## Аутентификация
 
-Все запросы (кроме публичных) должны содержать JWT токен в заголовке:
-
-```
-Authorization: Bearer {token}
-```
-
-## Эндпоинты для управления сотрудниками
-
-### Получение списка сотрудников
-
-**GET** `/staff/`
-
-Параметры запроса:
-- `organization_id` (опционально) - ID организации
-- `department_id` (опционально) - ID отдела
-- `search` (опционально) - Строка поиска
-- `skip` (опционально, по умолчанию: 0) - Смещение для пагинации
-- `limit` (опционально, по умолчанию: 100) - Ограничение результатов
-
-Ответ:
-```json
-[
-  {
-    "id": 1,
-    "name": "Иванов Иван",
-    "position": "Менеджер",
-    "email": "ivanov@example.com",
-    "department_id": 1,
-    "organization_id": 1
-  }
-]
-```
-
-### Создание сотрудника
-
-**POST** `/staff/`
-
-Тело запроса:
-```json
-{
-  "name": "Иванов Иван",
-  "position": "Менеджер",
-  "email": "ivanov@example.com",
-  "phone": "+7(900)123-45-67",
-  "department_id": 1,
-  "organization_id": 1
-}
-```
-
-Ответ:
-```json
-{
-  "id": 1,
-  "name": "Иванов Иван",
-  "position": "Менеджер",
-  "email": "ivanov@example.com",
-  "phone": "+7(900)123-45-67",
-  "department_id": 1,
-  "organization_id": 1
-}
-```
-
-### Создание сотрудника с файлами
-
-**POST** `/staff/with-files/`
-
-Тело запроса (multipart/form-data):
-- `staff` - JSON с данными сотрудника
-- `photo` (опционально) - Фото сотрудника
-- `passport` (опционально) - Скан паспорта
-- `contract` (опционально) - Трудовой договор
-
-Ответ:
-```json
-{
-  "id": 1,
-  "name": "Иванов Иван",
-  "position": "Менеджер",
-  "email": "ivanov@example.com",
-  "phone": "+7(900)123-45-67",
-  "department_id": 1,
-  "organization_id": 1,
-  "photo_path": "/uploads/photos/1.jpg",
-  "passport_path": "/uploads/documents/passport_1.pdf",
-  "contract_path": "/uploads/documents/contract_1.pdf"
-}
-```
-
-### Получение данных сотрудника
-
-**GET** `/staff/{employee_id}`
-
-Ответ:
-```json
-{
-  "id": 1,
-  "name": "Иванов Иван",
-  "position": "Менеджер",
-  "email": "ivanov@example.com",
-  "phone": "+7(900)123-45-67",
-  "department_id": 1,
-  "organization_id": 1,
-  "photo_path": "/uploads/photos/1.jpg"
-}
-```
-
-### Обновление данных сотрудника
-
-**PUT** `/staff/{employee_id}`
-
-Тело запроса:
-```json
-{
-  "name": "Иванов Иван Иванович",
-  "position": "Старший менеджер"
-}
-```
-
-Ответ:
-```json
-{
-  "id": 1,
-  "name": "Иванов Иван Иванович",
-  "position": "Старший менеджер",
-  "email": "ivanov@example.com",
-  "phone": "+7(900)123-45-67",
-  "department_id": 1,
-  "organization_id": 1
-}
-```
-
-### Удаление сотрудника
-
-**DELETE** `/staff/{employee_id}`
-
-Ответ:
-```json
-{
-  "message": "Staff deleted successfully"
-}
-```
-
-## Эндпоинты для управления функциональными связями
-
-### Получение списка функциональных связей
-
-**GET** `/functional-relations/`
-
-Параметры запроса:
-- `relation_type` (опционально) - Тип связи
-- `skip` (опционально, по умолчанию: 0) - Смещение для пагинации
-- `limit` (опционально, по умолчанию: 100) - Ограничение результатов
-
-Ответ:
-```json
-[
-  {
-    "id": 1,
-    "manager_id": 1,
-    "subordinate_id": 2,
-    "relation_type": "FUNCTIONAL",
-    "description": "Функциональное руководство",
-    "created_at": "2023-01-01T12:00:00"
-  }
-]
-```
-
-### Создание функциональной связи
-
-**POST** `/functional-relations/`
-
-Тело запроса:
-```json
-{
-  "manager_id": 1,
-  "subordinate_id": 2,
-  "relation_type": "FUNCTIONAL",
-  "description": "Функциональное руководство"
-}
-```
-
-Ответ:
-```json
-{
-  "id": 1,
-  "manager_id": 1,
-  "subordinate_id": 2,
-  "relation_type": "FUNCTIONAL",
-  "description": "Функциональное руководство",
-  "created_at": "2023-01-01T12:00:00"
-}
-```
-
-### Получение связей по руководителю
-
-**GET** `/functional-relations/by-manager/{manager_id}`
-
-Ответ:
-```json
-[
-  {
-    "id": 1,
-    "manager_id": 1,
-    "subordinate_id": 2,
-    "relation_type": "FUNCTIONAL",
-    "description": "Функциональное руководство",
-    "created_at": "2023-01-01T12:00:00"
-  }
-]
-```
-
-### Получение связей по подчиненному
-
-**GET** `/functional-relations/by-subordinate/{subordinate_id}`
-
-Ответ:
-```json
-[
-  {
-    "id": 1,
-    "manager_id": 1,
-    "subordinate_id": 2,
-    "relation_type": "FUNCTIONAL",
-    "description": "Функциональное руководство",
-    "created_at": "2023-01-01T12:00:00"
-  }
-]
-```
-
-### Удаление функциональной связи
-
-**DELETE** `/functional-relations/{relation_id}`
-
-Ответ:
-```json
-{
-  "message": "Functional relation deleted successfully"
-}
-```
-
-## Эндпоинты для управления организациями
-
-### Получение списка организаций
-
-**GET** `/organizations/`
-
-Параметры запроса:
-- `skip` (опционально, по умолчанию: 0) - Смещение для пагинации
-- `limit` (опционально, по умолчанию: 100) - Ограничение результатов
-
-Ответ:
-```json
-[
-  {
-    "id": 1,
-    "name": "ООО 'Пример'",
-    "address": "г. Москва, ул. Примерная, д. 1",
-    "is_active": true
-  }
-]
-```
-
-### Создание организации
-
-**POST** `/organizations/`
-
-Тело запроса:
-```json
-{
-  "name": "ООО 'Пример'",
-  "address": "г. Москва, ул. Примерная, д. 1",
-  "is_active": true
-}
-```
-
-Ответ:
-```json
-{
-  "id": 1,
-  "name": "ООО 'Пример'",
-  "address": "г. Москва, ул. Примерная, д. 1",
-  "is_active": true
-}
-```
-
-## Эндпоинты для управления отделами
-
-### Получение списка отделов
-
-**GET** `/divisions/`
-
-Параметры запроса:
-- `organization_id` (опционально) - ID организации
-- `parent_id` (опционально) - ID родительского отдела
-- `skip` (опционально, по умолчанию: 0) - Смещение для пагинации
-- `limit` (опционально, по умолчанию: 100) - Ограничение результатов
-
-Ответ:
-```json
-[
-  {
-    "id": 1,
-    "name": "ИТ-отдел",
-    "code": "IT",
-    "organization_id": 1,
-    "parent_id": null,
-    "level": 1,
-    "is_active": true
-  }
-]
-```
-
-### Создание отдела
-
-**POST** `/divisions/`
-
-Тело запроса:
-```json
-{
-  "name": "ИТ-отдел",
-  "code": "IT",
-  "organization_id": 1,
-  "parent_id": null,
-  "level": 1,
-  "is_active": true
-}
-```
-
-Ответ:
-```json
-{
-  "id": 1,
-  "name": "ИТ-отдел",
-  "code": "IT",
-  "organization_id": 1,
-  "parent_id": null,
-  "level": 1,
-  "is_active": true
-}
-```
-
-## Эндпоинты для интеграции с Telegram
-
-### Обработка вебхуков от Telegram бота
-
-**POST** `/telegram-bot/webhook`
-
-Тело запроса: JSON данные от Telegram API
-
-Ответ:
-```json
-{
-  "status": "success"
-}
-```
-
-## Коды ошибок
-
-- `400` - Некорректный запрос
-- `401` - Не авторизован
-- `403` - Доступ запрещен
-- `404` - Ресурс не найден
-- `409` - Конфликт (например, дублирование email)
-- `422` - Ошибка валидации
-- `500` - Внутренняя ошибка сервера
-
-## Примечания
-
-1. Все даты передаются в формате ISO 8601
-2. Все API-эндпоинты возвращают данные в формате JSON
-3. Для получения детальной информации об ошибке, проверьте тело ответа, которое содержит поля `detail` или `message` 
+| Метод | Эндпоинт | Описание | Принимает | Возвращает |
+|-------|----------|----------|-----------|------------|
+| POST | `/register` | Регистрация нового пользователя | JSON с `email`, `password`, `full_name` | Данные созданного пользователя |
+| POST | `/login/access-token` | Получение токена доступа | Form `username` (email), `password` | JSON с `access_token` и `token_type` |
+| GET | `/users/me` | Получение текущего пользователя | Header `Authorization: Bearer <token>` | Данные пользователя |
+
+## Организации (Organizations)
+
+| Метод | Эндпоинт | Описание | Параметры | Статус миграции |
+|-------|----------|----------|-----------|----------------|
+| GET | `/organizations/` | Получение списка организаций | Query-параметры для фильтрации | SQLAlchemy модель создана |
+| POST | `/organizations/` | Создание новой организации | JSON с данными организации | SQLAlchemy модель создана |
+| GET | `/organizations/{organization_id}` | Получение организации по ID | Path-параметр `organization_id` | SQLAlchemy модель создана |
+| PUT | `/organizations/{organization_id}` | Обновление организации | Path-параметр `organization_id`, JSON с данными | SQLAlchemy модель создана |
+| DELETE | `/organizations/{organization_id}` | Удаление организации | Path-параметр `organization_id` | SQLAlchemy модель создана |
+
+## Подразделения (Divisions)
+
+| Метод | Эндпоинт | Описание | Параметры | Статус миграции |
+|-------|----------|----------|-----------|----------------|
+| GET | `/divisions/` | Получение списка подразделений | Query-параметры для фильтрации | SQLAlchemy модель создана |
+| POST | `/divisions/` | Создание нового подразделения | JSON с данными подразделения | SQLAlchemy модель создана |
+| GET | `/divisions/{division_id}` | Получение подразделения по ID | Path-параметр `division_id` | SQLAlchemy модель создана |
+| PUT | `/divisions/{division_id}` | Обновление подразделения | Path-параметр `division_id`, JSON с данными | SQLAlchemy модель создана |
+| DELETE | `/divisions/{division_id}` | Удаление подразделения | Path-параметр `division_id` | SQLAlchemy модель создана |
+
+## Отделы (Sections)
+
+| Метод | Эндпоинт | Описание | Параметры | Статус миграции |
+|-------|----------|----------|-----------|----------------|
+| GET | `/sections/` | Получение списка отделов | Query-параметры для фильтрации | SQLAlchemy модель создана |
+| POST | `/sections/` | Создание нового отдела | JSON с данными отдела | SQLAlchemy модель создана |
+| GET | `/sections/{section_id}` | Получение отдела по ID | Path-параметр `section_id` | SQLAlchemy модель создана |
+| PUT | `/sections/{section_id}` | Обновление отдела | Path-параметр `section_id`, JSON с данными | SQLAlchemy модель создана |
+| DELETE | `/sections/{section_id}` | Удаление отдела | Path-параметр `section_id` | SQLAlchemy модель создана |
+
+## Должности (Positions)
+
+| Метод | Эндпоинт | Описание | Параметры | Статус миграции |
+|-------|----------|----------|-----------|----------------|
+| GET | `/positions/` | Получение списка должностей | Query-параметры для фильтрации | SQLAlchemy модель создана |
+| POST | `/positions/` | Создание новой должности | JSON с данными должности | SQLAlchemy модель создана |
+| GET | `/positions/{position_id}` | Получение должности по ID | Path-параметр `position_id` | SQLAlchemy модель создана |
+| PUT | `/positions/{position_id}` | Обновление должности | Path-параметр `position_id`, JSON с данными | SQLAlchemy модель создана |
+| DELETE | `/positions/{position_id}` | Удаление должности | Path-параметр `position_id` | SQLAlchemy модель создана |
+
+## Сотрудники (Staff)
+
+| Метод | Эндпоинт | Описание | Параметры | Статус миграции |
+|-------|----------|----------|-----------|----------------|
+| GET | `/staff/` | Получение списка сотрудников | Query-параметры для фильтрации | SQLAlchemy модель создана |
+| POST | `/staff/` | Создание нового сотрудника | JSON с данными сотрудника | SQLAlchemy модель создана |
+| GET | `/staff/{staff_id}` | Получение сотрудника по ID | Path-параметр `staff_id` | SQLAlchemy модель создана |
+| PUT | `/staff/{staff_id}` | Обновление сотрудника | Path-параметр `staff_id`, JSON с данными | SQLAlchemy модель создана |
+| DELETE | `/staff/{staff_id}` | Удаление сотрудника | Path-параметр `staff_id` | SQLAlchemy модель создана |
+
+## Функции (Functions)
+
+| Метод | Эндпоинт | Описание | Параметры | Статус миграции |
+|-------|----------|----------|-----------|----------------|
+| GET | `/functions/` | Получение списка функций | Query-параметры для фильтрации | SQLAlchemy модель создана |
+| POST | `/functions/` | Создание новой функции | JSON с данными функции | SQLAlchemy модель создана |
+| GET | `/functions/{function_id}` | Получение функции по ID | Path-параметр `function_id` | SQLAlchemy модель создана |
+| PUT | `/functions/{function_id}` | Обновление функции | Path-параметр `function_id`, JSON с данными | SQLAlchemy модель создана |
+| DELETE | `/functions/{function_id}` | Удаление функции | Path-параметр `function_id` | SQLAlchemy модель создана |
+
+## Функциональные назначения (Functional Assignments)
+
+| Метод | Эндпоинт | Описание | Параметры | Статус миграции |
+|-------|----------|----------|-----------|----------------|
+| GET | `/functional-assignments/` | Получение списка функциональных назначений | Query-параметры для фильтрации | SQLAlchemy модель создана |
+| POST | `/functional-assignments/` | Создание нового функционального назначения | JSON с данными назначения | SQLAlchemy модель создана |
+| GET | `/functional-assignments/{assignment_id}` | Получение назначения по ID | Path-параметр `assignment_id` | SQLAlchemy модель создана |
+| PUT | `/functional-assignments/{assignment_id}` | Обновление назначения | Path-параметр `assignment_id`, JSON с данными | SQLAlchemy модель создана |
+| DELETE | `/functional-assignments/{assignment_id}` | Удаление назначения | Path-параметр `assignment_id` | SQLAlchemy модель создана |
+
+## Иерархические связи (Hierarchy Relations)
+
+| Метод | Эндпоинт | Описание | Параметры | Статус миграции |
+|-------|----------|----------|-----------|----------------|
+| GET | `/hierarchy-relations/` | Получение списка иерархических связей | Query-параметры для фильтрации | SQLAlchemy модель создана |
+| POST | `/hierarchy-relations/` | Создание новой иерархической связи | JSON с данными связи | SQLAlchemy модель создана |
+| GET | `/hierarchy-relations/{relation_id}` | Получение связи по ID | Path-параметр `relation_id` | SQLAlchemy модель создана |
+| PUT | `/hierarchy-relations/{relation_id}` | Обновление связи | Path-параметр `relation_id`, JSON с данными | SQLAlchemy модель создана |
+| DELETE | `/hierarchy-relations/{relation_id}` | Удаление связи | Path-параметр `relation_id` | SQLAlchemy модель создана |
+
+## Организационная структура (Org Tree)
+
+| Метод | Эндпоинт | Описание | Параметры | Статус миграции |
+|-------|----------|----------|-----------|----------------|
+| GET | `/org-tree/` | Получение дерева организационной структуры | Query-параметры для фильтрации | В процессе миграции |
+
+## Статус миграции
+
+Общий статус миграции API:
+- **Инфраструктура**: 100%
+- **База данных**: 100%
+- **SQLAlchemy модели**: 100%
+- **Pydantic схемы**: 20%
+- **Бизнес-логика**: 10%
+- **Тесты**: 5%
+
+## Приоритеты миграции
+
+1. **Высокий приоритет**:
+   - Организации
+   - Подразделения
+   - Отделы
+   - Должности
+   - Сотрудники
+
+2. **Средний приоритет**:
+   - Функции
+   - Функциональные назначения
+
+3. **Низкий приоритет**:
+   - Иерархические связи
+   - Организационное дерево 

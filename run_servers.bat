@@ -28,7 +28,10 @@ if exist "%BASE_DIR%\backend" (
 
 :: Определяем Python
 set PYTHON_CMD=python
-if exist "%BASE_DIR%\.venv\Scripts\python.exe" (
+if exist "%BASE_DIR%\backend\venv_new\Scripts\python.exe" (
+    set PYTHON_CMD=%BASE_DIR%\backend\venv_new\Scripts\python.exe
+    echo [ИНФО] Используем Python из виртуального окружения backend\venv_new
+) else if exist "%BASE_DIR%\.venv\Scripts\python.exe" (
     set PYTHON_CMD=%BASE_DIR%\.venv\Scripts\python.exe
     echo [ИНФО] Используем Python из виртуального окружения .venv
 ) else if exist "%BASE_DIR%\backend\.venv\Scripts\python.exe" (
@@ -37,7 +40,7 @@ if exist "%BASE_DIR%\.venv\Scripts\python.exe" (
 )
 
 :: Запускаем бэкенд в отдельном окне
-start "OFS Бэкенд (full_api)" cmd /c "cd %BASE_DIR%\backend && %PYTHON_CMD% -m uvicorn full_api:app --host 127.0.0.1 --port 8001"
+start "OFS Бэкенд (full_api)" cmd /k "cd %BASE_DIR%\backend && %PYTHON_CMD% -m uvicorn full_api:app --host 127.0.0.1 --port 8001"
 
 :: Ждем пару секунд
 echo [ИНФО] Ожидание запуска бэкенда (3 секунды)...
@@ -92,7 +95,7 @@ if not exist node_modules (
 
 :: Запускаем фронтенд
 echo [ИНФО] Запуск фронтенда...
-start "OFS Фронтенд" cmd /c "npm run dev"
+start "OFS Фронтенд" cmd /k "npm run dev"
 
 :skip_frontend
 
@@ -102,7 +105,7 @@ cd "%BASE_DIR%"
 echo.
 echo ============================================
 echo [ИНФО] Серверы запущены!
-echo [ИНФО] Бэкенд API:  http://localhost:8000
+echo [ИНФО] Бэкенд API:  http://localhost:8001
 echo [ИНФО] Фронтенд:    http://localhost:3003 (если фронтенд был найден)
 echo ============================================
 echo.

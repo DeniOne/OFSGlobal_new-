@@ -12,13 +12,14 @@ import {
   Card,
   Row,
   Col,
-  Tag,
-  Tooltip
+  Tooltip,
+  Avatar
 } from 'antd';
 import {
   ReloadOutlined,
   FilterOutlined,
-  UserOutlined
+  UserOutlined,
+  MailOutlined
 } from '@ant-design/icons';
 import ReactFlow, {
   ReactFlowProvider,
@@ -31,31 +32,30 @@ import ReactFlow, {
   Position as RFPosition,
   Node,
   Edge,
-  NodeTypes,
   Handle
 } from 'reactflow';
 
 import 'reactflow/dist/style.css'; // Импортируем стили React Flow
 
 // Импортируем наши сервисы
-import { getAllPositions } from '../services/positionsService';
+import positionsService from '../services/positionsService';
 import { getAllHierarchyRelations } from '../services/hierarchyRelationsService';
-import orgTreeService from '../services/orgTreeService';
 import organizationService, { OrganizationDTO } from '../services/organizationService';
 import staffService from '../services/staffService';
 
 // Импортируем типы
 import { HierarchyRelation } from '../types/hierarchy';
-// Используем временный тип Position из positionsService, но лучше создать его в types/
-import { Position } from '../services/positionsService'; // Assuming Position is exported there
+import { Position } from '../types/organization';
+// Используем тип Position из types/organization
+// import { Position } from '../services/positionsService'; // Assuming Position is exported there
 
 import dagre from 'dagre';
 
 const { Title } = Typography;
 
 // Размеры узлов для dagre
-const nodeWidth = 220;  // Расширяем для размещения информации о сотрудниках
-const nodeHeight = 120; // Увеличиваем высоту для сотрудников
+const nodeWidth = 250;  // Увеличиваем ширину для размещения информации о сотрудниках
+const nodeHeight = 150; // Увеличиваем высоту для сотрудников
 
 // Функция для создания графа dagre и расчета позиций
 const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB'): { nodes: Node[]; edges: Edge[] } => {
@@ -116,33 +116,34 @@ const getNodeStyle = (attribute: string) => {
   const baseStyle = {
     border: '1px solid',
     padding: '10px 15px',
-    borderRadius: '4px',
+    borderRadius: '8px',
     background: 'white',
     width: nodeWidth,
     textAlign: 'center' as const,
     fontSize: '12px',
     color: '#fff', // Базовый цвет текста - белый
-    fontWeight: 'bold' // Жирный текст для лучшей читаемости
+    fontWeight: 'bold', // Жирный текст для лучшей читаемости
+    boxShadow: '0 4px 12px rgba(0,0,0,0.25)' // Добавляем тень для объема
   };
 
-  // TODO: Расширить эту логику для разных атрибутов
+  // Стили для разных атрибутов
   switch (attribute) {
     case 'Директор Направления':
-      return { ...baseStyle, borderColor: '#f5222d', background: '#cf1322', color: '#fff' };
+      return { ...baseStyle, borderColor: '#f5222d', background: 'linear-gradient(135deg, #cf1322 0%, #a8071a 100%)', color: '#fff' };
     case 'Руководитель Департамента':
-      return { ...baseStyle, borderColor: '#fa8c16', background: '#d46b08', color: '#fff' };
+      return { ...baseStyle, borderColor: '#fa8c16', background: 'linear-gradient(135deg, #d46b08 0%, #ad4e00 100%)', color: '#fff' };
     case 'Руководитель Отдела':
-        return { ...baseStyle, borderColor: '#1890ff', background: '#096dd9', color: '#fff' };
+        return { ...baseStyle, borderColor: '#1890ff', background: 'linear-gradient(135deg, #096dd9 0%, #0050b3 100%)', color: '#fff' };
     case 'Специалист':
-      return { ...baseStyle, borderColor: '#52c41a', background: '#389e0d', color: '#fff' };
+      return { ...baseStyle, borderColor: '#52c41a', background: 'linear-gradient(135deg, #389e0d 0%, #237804 100%)', color: '#fff' };
     // Добавляем остальные атрибуты
     case 'Учредитель':
-      return { ...baseStyle, borderColor: '#722ed1', background: '#531dab', color: '#fff' };
+      return { ...baseStyle, borderColor: '#722ed1', background: 'linear-gradient(135deg, #531dab 0%, #391085 100%)', color: '#fff' };
     case 'Директор':
-      return { ...baseStyle, borderColor: '#eb2f96', background: '#c41d7f', color: '#fff' };
+      return { ...baseStyle, borderColor: '#eb2f96', background: 'linear-gradient(135deg, #c41d7f 0%, #9e1068 100%)', color: '#fff' };
     // Добавить стили для других атрибутов из Enum
     default:
-      return { ...baseStyle, borderColor: '#d9d9d9', background: '#8c8c8c', color: '#fff' };
+      return { ...baseStyle, borderColor: '#d9d9d9', background: 'linear-gradient(135deg, #8c8c8c 0%, #595959 100%)', color: '#fff' };
   }
 };
 
@@ -168,27 +169,128 @@ interface CustomNodeData {
 const CustomNode: React.FC<{ data: CustomNodeData }> = ({ data }) => {
   const style = getNodeStyle(data.attribute);
   
+  const getInitials = (name: string) => {
+    const parts = name.split(' ');
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+  };
+  
   return (
-    <div style={style}>
+    <div style={{
+      ...style,
+      minHeight: nodeHeight, // Обеспечиваем минимальную высоту
+      width: nodeWidth,     // Фиксированная ширина
+      boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+      border: '1px solid rgba(255,255,255,0.2)',
+      padding: '15px',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'space-between'
+    }}>
       <Handle type="target" position={RFPosition.Top} />
       
-      <div style={{ marginBottom: '5px', fontWeight: 'bold' }}>
+      <div style={{ 
+        marginBottom: '10px', 
+        fontWeight: 'bold',
+        fontSize: '14px',
+        textAlign: 'center',
+        padding: '5px',
+        background: 'rgba(0,0,0,0.2)',
+        borderRadius: '4px'
+      }}>
         {data.label}
       </div>
       
       {data.staff && data.staff.length > 0 ? (
-        <div style={{ fontSize: '11px', textAlign: 'left', marginTop: '8px', borderTop: '1px dashed rgba(255,255,255,0.3)', paddingTop: '5px' }}>
+        <div style={{ 
+          fontSize: '12px', 
+          textAlign: 'left',
+          marginTop: '5px',
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
           {data.staff.map((person, idx) => (
-            <Tooltip key={idx} title={person.email || ''}>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
-                <UserOutlined style={{ marginRight: '4px', fontSize: '10px' }} />
-                <span>{person.name}</span>
+            <div 
+              key={idx} 
+              style={{ 
+                padding: '8px', 
+                borderRadius: '6px', 
+                background: 'rgba(255,255,255,0.15)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px'
+              }}
+            >
+              <Avatar 
+                style={{ 
+                  backgroundColor: '#1890ff', 
+                  fontSize: '11px',
+                  marginTop: '2px'
+                }} 
+                size="small"
+              >
+                {getInitials(person.name)}
+              </Avatar>
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <div style={{ 
+                  fontWeight: 'bold', 
+                  marginBottom: '2px',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {person.name}
+                </div>
+                {person.position && (
+                  <div style={{ 
+                    fontSize: '10px', 
+                    opacity: 0.8,
+                    marginBottom: '3px' 
+                  }}>
+                    {person.position}
+                  </div>
+                )}
+                {person.email && (
+                  <Tooltip title={person.email}>
+                    <div style={{ 
+                      fontSize: '10px', 
+                      display: 'flex', 
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <MailOutlined style={{ fontSize: '10px' }} />
+                      <span style={{ 
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}>
+                        {person.email}
+                      </span>
+                    </div>
+                  </Tooltip>
+                )}
               </div>
-            </Tooltip>
+            </div>
           ))}
         </div>
       ) : (
-        <div style={{ fontSize: '10px', opacity: 0.7, fontStyle: 'italic', marginTop: '5px' }}>
+        <div style={{ 
+          fontSize: '13px', 
+          opacity: 0.8, 
+          fontStyle: 'italic', 
+          marginTop: '10px',
+          padding: '8px',
+          background: 'rgba(0,0,0,0.2)',
+          borderRadius: '6px',
+          textAlign: 'center',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flex: 1
+        }}>
+          <UserOutlined style={{ marginRight: '8px' }} />
           (вакансия)
         </div>
       )}
@@ -198,23 +300,18 @@ const CustomNode: React.FC<{ data: CustomNodeData }> = ({ data }) => {
   );
 };
 
-// Определение типов узлов
-const nodeTypes: NodeTypes = {
-  custom: CustomNode,
-};
-
 const StructureChartPage: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node[]>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [useDirectOrgTree, setUseDirectOrgTree] = useState(true); // Флаг для переключения метода загрузки
   const [showFilters, setShowFilters] = useState(false);
   const [organizations, setOrganizations] = useState<OrganizationDTO[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [filters, setFilters] = useState<FilterFormValues>({});
   const [filterForm] = Form.useForm();
   const abortControllerRef = useRef<AbortController | null>(null);
+  const [positionOptions, setPositionOptions] = useState<{ value: number; label: string }[]>([]);
 
   // Загрузка списков для фильтров
   useEffect(() => {
@@ -222,10 +319,11 @@ const StructureChartPage: React.FC = () => {
       try {
         const [orgsData, positionsData] = await Promise.all([
           organizationService.getAllOrganizations(),
-          getAllPositions()
+          positionsService.getAllPositions()
         ]);
         setOrganizations(orgsData);
         setPositions(positionsData);
+        setPositionOptions(positionsData.map(pos => ({ value: pos.id, label: pos.name })));
       } catch (err) {
         console.error("[LOG:Chart] Error fetching filter data:", err);
         message.error('Ошибка загрузки данных для фильтров.');
@@ -234,7 +332,7 @@ const StructureChartPage: React.FC = () => {
     
     fetchFilterData();
   }, []);
-
+  
   // Функция трансформации данных (для старого метода)
   const transformDataToFlow = useCallback((positions: Position[], relations: HierarchyRelation[]) => {
     const flowNodes: Node[] = [];
@@ -286,94 +384,7 @@ const StructureChartPage: React.FC = () => {
 
   }, []);
 
-  // Загрузка и обработка данных (новый метод с прямым получением дерева)
-  const fetchDirectOrgTree = useCallback(async () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    abortControllerRef.current = new AbortController();
-    const signal = abortControllerRef.current.signal;
-
-    setLoading(true);
-    setError(null);
-    try {
-      console.log('[LOG:Chart] Fetching org tree directly with filters:', filters);
-      
-      // Загружаем готовое дерево с бэкенда
-      const orgTreeData = await orgTreeService.getOrgTree(filters);
-      
-      if (signal.aborted) return;
-
-      console.log('[LOG:Chart] Org tree fetched directly:', orgTreeData);
-      
-      // Собираем ID всех должностей для загрузки сотрудников
-      const positionIds = orgTreeData.nodes
-        .map(node => node.data.db_id)
-        .filter((id): id is number => id !== undefined); // Фильтруем undefined
-      
-      // Пробуем загрузить данные о сотрудниках для всех должностей
-      let staffByPosition: Record<number, any[]> = {};
-      try {
-        staffByPosition = await staffService.getStaffForOrgChart(positionIds);
-        console.log('[LOG:Chart] Staff data loaded:', staffByPosition);
-      } catch (staffError) {
-        console.error('[LOG:Chart] Error loading staff data:', staffError);
-        // Продолжаем без данных о сотрудниках
-      }
-      
-      // Стилизуем ноды и добавляем тип "custom" ко всем узлам
-      const styledNodes = orgTreeData.nodes.map(node => {
-        // Форматируем информацию о сотрудниках для узла
-        const positionStaff = staffByPosition[node.data.db_id] || [];
-        
-        // Преобразуем данные сотрудников в формат для отображения в узле
-        const staffForNode = positionStaff.map(staff => ({
-          id: staff.id,
-          name: `${staff.last_name} ${staff.first_name.charAt(0)}.`,  // Фамилия И.
-          position: staff.position,
-          email: staff.email
-        }));
-        
-        return {
-          ...node,
-          type: 'custom', // Устанавливаем кастомный тип для всех узлов
-          data: {
-            ...node.data,
-            staff: staffForNode
-          }
-        };
-      });
-      
-      // Применяем расположение с помощью dagre
-      const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-        styledNodes, 
-        orgTreeData.edges
-      );
-      
-      console.log('[LOG:Chart] Setting layouted nodes and edges from direct org tree');
-      setNodes(layoutedNodes);
-      setEdges(layoutedEdges);
-
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        console.log('[LOG:Chart] Direct org tree fetch aborted');
-        return;
-      }
-      console.error("[LOG:Chart] Error fetching direct org tree:", err);
-      setError('Ошибка при загрузке дерева организационной структуры.');
-      message.error('Ошибка загрузки дерева структуры.');
-      
-      // Попробуем запасной метод
-      setUseDirectOrgTree(false);
-      fetchLegacyData();
-    } finally {
-      if (!signal.aborted) {
-        setLoading(false);
-      }
-    }
-  }, [filters, setNodes, setEdges]);
-
-  // Альтернативный метод загрузки (старый, через отдельные запросы)
+  // Старый метод загрузки (через отдельные запросы должностей и связей)
   const fetchLegacyData = useCallback(async () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -387,7 +398,7 @@ const StructureChartPage: React.FC = () => {
       console.log('[LOG:Chart] Fetching positions and relations...');
       // Загружаем только должности и иерархические связи
       const [positions, relations] = await Promise.all([
-        getAllPositions(/* { signal } - если сервис поддерживает AbortSignal */),
+        positionsService.getAllPositions(/* { signal } - если сервис поддерживает AbortSignal */),
         getAllHierarchyRelations(/* { signal } */)
       ]);
       console.log('[LOG:Chart] Positions fetched:', positions);
@@ -401,6 +412,61 @@ const StructureChartPage: React.FC = () => {
       console.log('[LOG:Chart] Setting layouted nodes and edges');
       setNodes(layoutedNodes);
       setEdges(layoutedEdges);
+
+      // Дополнительно загружаем информацию о сотрудниках для каждой должности
+      try {
+        // Собираем ID всех должностей
+        const positionIds = positions.map(p => p.id);
+        
+        // Загружаем сотрудников для всех должностей
+        const staffByPosition: Record<number, any[]> = {};
+        
+        await Promise.all(positionIds.map(async (posId) => {
+          try {
+            const staffData = await staffService.getStaffByPosition(posId);
+            if (staffData.length > 0) {
+              // Обновляем узел с информацией о сотрудниках
+              setNodes(prevNodes => 
+                prevNodes.map(node => {
+                  if (node.id === `pos-${posId}`) {
+                    // Форматируем данные сотрудников
+                    const staffForNode = staffData.map(staff => {
+                      const fullName = [
+                        staff.last_name,
+                        staff.first_name,
+                        staff.middle_name
+                      ].filter(Boolean).join(' ');
+                      
+                      return {
+                        id: staff.id,
+                        name: fullName,
+                        position: staff.position || '',
+                        email: staff.email || ''
+                      };
+                    });
+                    
+                    return {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        staff: staffForNode
+                      }
+                    };
+                  }
+                  return node;
+                })
+              );
+            }
+          } catch (err) {
+            console.warn(`[LOG:Chart] Failed to load staff for position ${posId}:`, err);
+          }
+        }));
+        
+        console.log('[LOG:Chart] Updated nodes with staff data');
+      } catch (staffError) {
+        console.warn('[LOG:Chart] Error loading staff data:', staffError);
+        // Продолжаем без данных о сотрудниках
+      }
 
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -421,12 +487,8 @@ const StructureChartPage: React.FC = () => {
 
   // Выбираем метод загрузки данных
   const fetchData = useCallback(() => {
-    if (useDirectOrgTree) {
-      fetchDirectOrgTree();
-    } else {
-      fetchLegacyData();
-    }
-  }, [useDirectOrgTree, fetchDirectOrgTree, fetchLegacyData]);
+    fetchLegacyData();
+  }, [fetchLegacyData]);
 
   // Обработчик применения фильтров
   const handleFilterApply = (values: FilterFormValues) => {
@@ -473,18 +535,8 @@ const StructureChartPage: React.FC = () => {
                   onClick={fetchData} 
                   loading={loading}
                   disabled={loading}
-                  style={{ marginRight: 10 }}
               >
                   Обновить
-              </Button>
-              <Button 
-                  onClick={() => {
-                    setUseDirectOrgTree(!useDirectOrgTree);
-                    message.info(`Переключено на ${!useDirectOrgTree ? 'новый' : 'старый'} метод загрузки`);
-                  }}
-                  disabled={loading}
-              >
-                  {useDirectOrgTree ? 'Старый метод' : 'Новый метод'}
               </Button>
             </div>
         </Space>
@@ -529,9 +581,9 @@ const StructureChartPage: React.FC = () => {
                       showSearch
                       optionFilterProp="children"
                     >
-                      {positions.map(pos => (
-                        <Select.Option key={pos.id} value={pos.id}>
-                          {pos.name}
+                      {positionOptions.map(pos => (
+                        <Select.Option key={pos.value} value={pos.value}>
+                          {pos.label}
                         </Select.Option>
                       ))}
                     </Select>
@@ -582,7 +634,7 @@ const StructureChartPage: React.FC = () => {
                 edges={edges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
-                nodeTypes={nodeTypes}
+                nodeTypes={{ custom: CustomNode }}
                 fitView
                 // fitViewOptions={{ padding: 0.1 }}
               >

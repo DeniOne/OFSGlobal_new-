@@ -94,10 +94,12 @@ export interface SectionFunction {
 export interface Position {
   id: number;
   name: string;
-  code: string;
   description?: string;
   is_active: boolean;
-  function_id?: number | null;
+  attribute: string;
+  division_id?: number | null;
+  section_id?: number | null;
+  functions?: Function[];
   created_at: string;
   updated_at: string;
 }

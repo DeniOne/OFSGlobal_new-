@@ -8,29 +8,36 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional, Dict, Any, Union
 from enum import Enum
 import uvicorn
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from complete_schema import ALL_SCHEMAS
 import json
 import shutil # <-- Добавляем импорт для работы с файлами
 from fastapi.staticfiles import StaticFiles # <-- Добавляем импорт
-# import time # <-- Убираем time
-
-# --- НОВЫЕ ИМПОРТЫ ДЛЯ АУТЕНТИФИКАЦИИ ---
+import uuid
+import base64
+import time
+from logging.config import dictConfig
+# --- ИМПОРТЫ ДЛЯ АУТЕНТИФИКАЦИИ ---
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-# --- КОНЕЦ НОВЫХ ИМПОРТОВ ---
+# --- ИМПОРТ ИЕРАРХИЧЕСКИХ СВЯЗЕЙ ---
+try:
+    from hierarchy_router import router as hierarchy_router
+    has_hierarchy_router = True
+except ImportError:
+    has_hierarchy_router = False
+    print("Не удалось импортировать API иерархических связей и управления") # logger еще не определен, поэтому print
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("api_debug.log")
+        logging.StreamHandler()
     ]
 )
-logger = logging.getLogger("ofs_api")
+logger = logging.getLogger("full_api")
 
 # Имя нашей базы данных с новой схемой
 DB_PATH = "full_api_new.db"
@@ -54,10 +61,10 @@ app = FastAPI(title="OFS Global API", description="Гибкое API для OFS G
 # Настройка CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # <-- Возвращаем "*", чтобы разрешить все источники
+    allow_origins=["http://localhost:3000", "http://localhost:3003", "http://127.0.0.1:3000", "http://127.0.0.1:3003"],
     allow_credentials=True,
-    allow_methods=["*"],  # Разрешаем все HTTP методы
-    allow_headers=["*"],  # Разрешаем все заголовки
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 # --- КОНЕЦ ПЕРЕМЕЩЕНИЯ CORS ---
 
@@ -86,9 +93,33 @@ except ImportError:
 # Добавляем событие для инициализации БД при старте
 @app.on_event("startup")
 def startup_event():
+    """Выполняется при запуске сервера."""
     logger.info("Выполняется событие startup: инициализация базы данных...")
     init_db()
     logger.info("Инициализация базы данных завершена.")
+    
+    # Подключаем роутер для организационной структуры, если он доступен
+    if has_org_structure_router:
+        try:
+            # Переопределяем функцию get_db роутера
+            org_structure_router.get_db = get_db
+            logger.info("Подключение роутера организационной структуры...")
+            # Не добавляем роутер здесь, он будет добавлен позже в конце файла
+            logger.info("Роутер организационной структуры будет подключен позже!")
+        except Exception as e:
+            logger.error(f"Ошибка подключения роутера организационной структуры: {e}")
+    
+    # Подключаем роутер для иерархических связей и управления, если он доступен
+    if has_hierarchy_router:
+        try:
+            # Переопределяем функцию get_db роутера
+            hierarchy_router.get_db = get_db
+            logger.info("Подключение роутера иерархических связей и управления...")
+            # Наши URL уже с префиксом /hierarchy, возвращаем его
+            app.include_router(hierarchy_router, prefix="/hierarchy", tags=["hierarchy"])
+            logger.info("Роутер иерархических связей и управления подключен!")
+        except Exception as e:
+            logger.error(f"Ошибка подключения роутера иерархических связей и управления: {e}")
 
 # ================== МОДЕЛИ PYDANTIC ==================
 
@@ -268,12 +299,14 @@ class Position(PositionBase):
 
 # Модели для Staff (Сотрудник)
 class StaffBase(BaseModel):
+    """Базовая модель сотрудника."""
     email: EmailStr
-    user_id: Optional[int] = None # <<-- ДОБАВЛЕНО: Связь с User
+    user_id: Optional[int] = None # <<-- Связь с User
     first_name: str
     last_name: str
     middle_name: Optional[str] = None
     phone: Optional[str] = None
+    position: Optional[str] = None 
     description: Optional[str] = None
     is_active: bool = True
     organization_id: Optional[int] = None
@@ -288,11 +321,13 @@ class StaffBase(BaseModel):
     document_paths: Optional[str] = None # Рассмотреть List[str], если храним как JSON
 
 class StaffCreate(StaffBase):
-    # password: str # <<-- УДАЛЕНО
     # Добавим поле для галочки "Создать учетную запись"
     create_user_account: bool = False
     # Пароль нужен, только если создаем учетную запись
-    password: Optional[str] = None 
+    password: Optional[str] = None
+    # <<-- ДОБАВЛЯЕМ ЭТО ПОЛЕ ДЛЯ ОБНОВЛЕНИЯ ДОЛЖНОСТИ -->>
+    primary_position_id: Optional[int] = None 
+    # <<-- КОНЕЦ ДОБАВЛЕНИЯ -->>
     pass
 
 class Staff(StaffBase):
@@ -1943,248 +1978,159 @@ def read_staff_member(staff_id: int, db: sqlite3.Connection = Depends(get_db)):
 
 @app.put("/staff/{staff_id}", response_model=Staff)
 async def update_staff(
-    staff_id: int, 
-    staff_data: str = Form(...),
-    photo: Optional[UploadFile] = File(None),
-    documents: List[UploadFile] = File([]),
-    # Флаг для удаления текущего фото без загрузки нового
-    delete_photo: bool = Form(False),
-    # Флаг для удаления ВСЕХ текущих документов без загрузки новых
-    delete_documents: bool = Form(False), 
+    staff_id: int,
+    staff_update_data: StaffCreate, # Используем существующую модель (теперь с primary_position_id)
     db: sqlite3.Connection = Depends(get_db)
 ):
     """
-    Обновить данные сотрудника с возможностью обновления/удаления фото и документов.
+    Обновляет основные данные сотрудника И ЕГО ОСНОВНУЮ ДОЛЖНОСТЬ.
+    Принимает данные как JSON в теле запроса.
     """
-    logger.info(f"Попытка обновления сотрудника ID {staff_id} с файлами...")
+    # Добавляем подробное логирование входящего запроса
+    logging.info(f"Попытка обновления сотрудника ID {staff_id}")
+    logging.info(f"Полученные данные для обновления: {staff_update_data.model_dump()}")
+    logging.info(f"Наличие primary_position_id: {staff_update_data.primary_position_id is not None}")
+
     cursor = db.cursor()
-
-    # 1. Проверяем, что сотрудник существует и получаем его текущие данные
+    # --- Проверка существования сотрудника ---
     cursor.execute("SELECT * FROM staff WHERE id = ?", (staff_id,))
-    current_staff_db = cursor.fetchone()
-    if not current_staff_db:
-        raise HTTPException(status_code=404, detail=f"Сотрудник с ID {staff_id} не найден")
-    
-    current_photo_path = current_staff_db["photo_path"]
-    current_doc_paths_json = current_staff_db["document_paths"]
-    current_document_paths = []
-    if current_doc_paths_json:
-        try:
-            current_document_paths = json.loads(current_doc_paths_json)
-        except json.JSONDecodeError:
-            logger.warning(f"Не удалось декодировать JSON путей документов для сотрудника ID {staff_id}")
+    current_staff = cursor.fetchone()
+    if not current_staff:
+        logger.error(f"Сотрудник с ID {staff_id} не найден при попытке обновления.")
+        raise HTTPException(status_code=404, detail="Сотрудник не найден")
 
-    # 2. Парсим JSON данные сотрудника из строки
+    # --- Обработка обновления основной должности ---
+    new_primary_position_id = staff_update_data.primary_position_id
+    current_primary_position_id: Optional[int] = None
+
     try:
-        staff_dict = json.loads(staff_data)
-        staff_update_data = StaffCreate(**staff_dict) # Используем StaffCreate для валидации
-        logger.debug(f"Данные для обновления сотрудника ID {staff_id} успешно распарсены: {staff_update_data.email}")
-    except json.JSONDecodeError:
-        logger.error("Ошибка декодирования JSON данных сотрудника при обновлении")
-        raise HTTPException(status_code=400, detail="Неверный формат JSON данных сотрудника")
-    except Exception as e:
-        logger.error(f"Ошибка валидации данных сотрудника при обновлении: {e}")
-        raise HTTPException(status_code=422, detail=f"Ошибка в данных сотрудника: {e}")
+        # Получаем текущую основную должность (если есть)
+        cursor.execute("SELECT position_id FROM staff_positions WHERE staff_id = ? AND is_primary = 1", (staff_id,))
+        primary_pos_row = cursor.fetchone()
+        if primary_pos_row:
+            current_primary_position_id = primary_pos_row["position_id"]
 
-    # 3. Проверка существования связанных сущностей (организации, локации)
-    # (Аналогично create_staff, но используем staff_update_data)
-    if staff_update_data.organization_id is not None:
-        cursor.execute("SELECT id FROM organizations WHERE id = ?", (staff_update_data.organization_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Организация с ID {staff_update_data.organization_id} не найдена")
-    if staff_update_data.primary_organization_id is not None:
-        cursor.execute("SELECT id FROM organizations WHERE id = ?", (staff_update_data.primary_organization_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Основная организация с ID {staff_update_data.primary_organization_id} не найдена")
-    if staff_update_data.location_id is not None:
-        cursor.execute("SELECT id, org_type FROM organizations WHERE id = ?", (staff_update_data.location_id,))
-        loc = cursor.fetchone()
-        if not loc:
-            raise HTTPException(status_code=404, detail=f"Локация с ID {staff_update_data.location_id} не найдена")
-        if loc["org_type"] != "location":
-            raise HTTPException(status_code=400, detail=f"Организация с ID {staff_update_data.location_id} не является локацией")
+        # Если пришел новый ID и он отличается от текущего
+        if new_primary_position_id is not None and new_primary_position_id != current_primary_position_id:
+            logger.info(f"Обновление основной должности для staff_id={staff_id} на position_id={new_primary_position_id}")
+            # Проверяем, существует ли новая должность
+            cursor.execute("SELECT id FROM positions WHERE id = ?", (new_primary_position_id,))
+            if not cursor.fetchone():
+                 raise HTTPException(status_code=404, detail=f"Новая должность с ID {new_primary_position_id} не найдена")
 
-    # 4. Обработка файлов
-    staff_upload_dir = os.path.join(UPLOAD_DIR_STAFF, str(staff_id))
-    os.makedirs(staff_upload_dir, exist_ok=True)
-    
-    new_photo_path = current_photo_path
-    new_document_paths = current_document_paths
+            # 1. Сбрасываем флаг is_primary у всех текущих должностей этого сотрудника
+            cursor.execute("UPDATE staff_positions SET is_primary = 0 WHERE staff_id = ?", (staff_id,))
+            logger.debug(f"Сброшен is_primary для staff_id={staff_id}")
 
-    # Обработка фото
-    if delete_photo:
-        if current_photo_path:
-            photo_full_path = os.path.join(os.getcwd(), current_photo_path)
-            if os.path.exists(photo_full_path):
-                try:
-                    os.remove(photo_full_path)
-                    logger.info(f"Старое фото {current_photo_path} удалено для сотрудника ID {staff_id}")
-                except OSError as e:
-                    logger.error(f"Ошибка при удалении старого фото {current_photo_path}: {e}")
-            else: 
-                logger.warning(f"Старый файл фото {current_photo_path} не найден по пути {photo_full_path}")
-        new_photo_path = None # Устанавливаем в None
-        logger.info(f"Фото для сотрудника ID {staff_id} помечено на удаление (без загрузки нового).")
-    elif photo:
-        # Удаляем старое фото перед сохранением нового
-        if current_photo_path:
-            photo_full_path = os.path.join(os.getcwd(), current_photo_path)
-            if os.path.exists(photo_full_path):
-                try:
-                    os.remove(photo_full_path)
-                    logger.info(f"Старое фото {current_photo_path} удалено перед загрузкой нового для сотрудника ID {staff_id}")
-                except OSError as e:
-                     logger.error(f"Ошибка при удалении старого фото {current_photo_path}: {e}")
-            else: 
-                logger.warning(f"Старый файл фото {current_photo_path} не найден по пути {photo_full_path}")
-        # Сохраняем новое фото
-        photo_filename = f"photo_{datetime.now().strftime('%Y%m%d%H%M%S')}_{photo.filename}"
-        photo_destination = os.path.join(staff_upload_dir, photo_filename)
-        new_photo_path = save_uploaded_file(photo, photo_destination)
-        logger.info(f"Новое фото для сотрудника ID {staff_id} сохранено, путь: {new_photo_path}")
+            # 2. Проверяем, есть ли уже связь с новой должностью (неактивная)
+            cursor.execute("SELECT id FROM staff_positions WHERE staff_id = ? AND position_id = ?", (staff_id, new_primary_position_id))
+            existing_link = cursor.fetchone()
 
-    # Обработка документов
-    if delete_documents:
-        if current_document_paths:
-            logger.info(f"Удаление старых документов для сотрудника ID {staff_id}...")
-            for doc_path in current_document_paths:
-                doc_full_path = os.path.join(os.getcwd(), doc_path)
-                if os.path.exists(doc_full_path):
-                    try:
-                        os.remove(doc_full_path)
-                        logger.debug(f"Удален старый документ: {doc_path}")
-                    except OSError as e:
-                        logger.error(f"Ошибка при удалении старого документа {doc_path}: {e}")
-                else:
-                    logger.warning(f"Старый файл документа {doc_path} не найден по пути {doc_full_path}")
-            new_document_paths = [] # Очищаем список
-            logger.info(f"Все старые документы для сотрудника ID {staff_id} удалены.")
-        else:
-             logger.info(f"Нет старых документов для удаления у сотрудника ID {staff_id}.")
-    elif documents: # Если переданы новые документы (даже пустой список, если форма отправила)
-        # Сначала удаляем все старые документы (режим замены)
-        if current_document_paths:
-            logger.info(f"Удаление старых документов перед загрузкой новых для сотрудника ID {staff_id}...")
-            for doc_path in current_document_paths:
-                doc_full_path = os.path.join(os.getcwd(), doc_path)
-                if os.path.exists(doc_full_path):
-                    try:
-                        os.remove(doc_full_path)
-                        logger.debug(f"Удален старый документ: {doc_path}")
-                    except OSError as e:
-                        logger.error(f"Ошибка при удалении старого документа {doc_path}: {e}")
-                else:
-                     logger.warning(f"Старый файл документа {doc_path} не найден по пути {doc_full_path}")
-        # Сохраняем новые документы
-        new_document_paths = [] # Начинаем с чистого списка
-        logger.info(f"Сохранение {len(documents)} новых документов для сотрудника ID {staff_id}...")
-        for doc in documents:
-            if doc.filename:
-                doc_filename = f"doc_{datetime.now().strftime('%Y%m%d%H%M%S')}_{doc.filename}"
-                doc_destination = os.path.join(staff_upload_dir, doc_filename)
-                saved_path = save_uploaded_file(doc, doc_destination)
-                new_document_paths.append(saved_path)
-                logger.debug(f"Новый документ сохранен: {saved_path}")
+            if existing_link:
+                # Если связь есть, просто делаем ее основной
+                cursor.execute("UPDATE staff_positions SET is_primary = 1, is_active = 1 WHERE id = ?", (existing_link["id"],))
+                logger.debug(f"Существующая связь staff_positions id={existing_link['id']} сделана основной.")
             else:
-                logger.warning("Пропущен файл документа без имени при обновлении")
-        logger.info(f"Новые документы для сотрудника ID {staff_id} сохранены, пути: {new_document_paths}")
+                # Если связи нет, создаем новую как основную и активную
+                cursor.execute("""
+                    INSERT INTO staff_positions (staff_id, position_id, is_primary, is_active, start_date) 
+                    VALUES (?, ?, 1, 1, ?) 
+                """, (staff_id, new_primary_position_id, date.today().isoformat())) # Добавляем текущую дату как дату начала
+                logger.debug(f"Создана новая основная связь staff_positions для staff_id={staff_id}, position_id={new_primary_position_id}")
 
-    # 5. Обновляем запись сотрудника в БД
-    try:
-        doc_paths_json_updated = json.dumps(new_document_paths)
-        
-        db.execute(
-            """
-            UPDATE staff SET
-                email = ?, first_name = ?, last_name = ?, middle_name = ?,
-                        phone = ?, description = ?, is_active = ?, 
-                organization_id = ?, primary_organization_id = ?, location_id = ?, 
-                registration_address = ?, actual_address = ?, 
-                        telegram_id = ?, vk = ?, instagram = ?,
-                        photo_path = ?, document_paths = ?,
-                        updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (
-                    staff_update_data.email,
-                    staff_update_data.first_name,
-                    staff_update_data.last_name,
-                    staff_update_data.middle_name,
-                    staff_update_data.phone,
-                    staff_update_data.description,
-                    1 if staff_update_data.is_active else 0,
-                    staff_update_data.organization_id,
-                    staff_update_data.primary_organization_id,
-                    staff_update_data.location_id,
-                    staff_update_data.registration_address,
-                    staff_update_data.actual_address,
-                    staff_update_data.telegram_id,
-                    staff_update_data.vk,
-                    staff_update_data.instagram,
-                    new_photo_path, # Обновленный путь к фото
-                    doc_paths_json_updated, # Обновленный JSON путей к документам
-                staff_id
-            )
-        )
+        # --- Обновление остальных полей в таблице staff ---
+        update_data = staff_update_data.model_dump(exclude_unset=True, exclude={'primary_position_id'}) # Исключаем position_id
+        # Удаляем поля, которые не обновляются напрямую в этой таблице
+        update_data.pop('create_user_account', None)
+        update_data.pop('password', None)
+        # Удаляем position, так как оно теперь берется из staff_positions
+        update_data.pop('position', None) 
+
+        logger.debug(f"Подготовленные данные для обновления таблицы 'staff': {update_data}")
+
+        if update_data:
+            # Проверка связанных сущностей (organization_id, location_id и т.д.)
+            if "organization_id" in update_data and update_data["organization_id"] is not None:
+                 cursor.execute("SELECT id FROM organizations WHERE id = ?", (update_data["organization_id"],))
+                 if not cursor.fetchone(): raise HTTPException(status_code=404, detail=f"Организация {update_data['organization_id']} не найдена")
+            if "primary_organization_id" in update_data and update_data["primary_organization_id"] is not None:
+                 cursor.execute("SELECT id FROM organizations WHERE id = ?", (update_data["primary_organization_id"],))
+                 if not cursor.fetchone(): raise HTTPException(status_code=404, detail=f"Основная организация {update_data['primary_organization_id']} не найдена")
+            if "location_id" in update_data and update_data["location_id"] is not None:
+                 cursor.execute("SELECT id, org_type FROM organizations WHERE id = ?", (update_data["location_id"],))
+                 loc = cursor.fetchone()
+                 if not loc: raise HTTPException(status_code=404, detail=f"Локация {update_data['location_id']} не найдена")
+                 if loc["org_type"] != "location": raise HTTPException(status_code=400, detail=f"Организация {update_data['location_id']} не локация")
+
+            # Формируем SQL запрос
+            columns = []
+            values = []
+            for key, value in update_data.items():
+                columns.append(f"{key} = ?")
+                values.append(1 if isinstance(value, bool) else value)
+            
+            if columns: # Если есть что обновлять в staff
+                columns.append("updated_at = CURRENT_TIMESTAMP")
+                query = f"UPDATE staff SET {', '.join(columns)} WHERE id = ?"
+                values.append(staff_id)
+                cursor.execute(query, values)
+                logger.debug(f"Обновлена таблица 'staff' для ID={staff_id}")
+
         db.commit()
-        logger.info(f"Запись сотрудника ID {staff_id} успешно обновлена в БД.")
+        logger.info(f"Сотрудник ID {staff_id} успешно обновлен (включая должность, если менялась)")
 
     except sqlite3.Error as e:
         db.rollback()
-        logger.error(f"Ошибка SQLite при обновлении сотрудника ID {staff_id}: {str(e)}", exc_info=True)
-        # В случае ошибки БД, мы НЕ должны откатывать изменения файлов, 
-        # так как они могли быть успешно удалены/заменены до ошибки.
-        # Возможно, стоит логировать это состояние несоответствия.
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка базы данных при обновлении сотрудника: {str(e)}",
-        )
-    except HTTPException as e: # Ошибка при сохранении файла
-        db.rollback() # Откатываем изменения в БД, если они были
-        raise e
-    except Exception as e:
+        logger.error(f"Ошибка БД при обновлении сотрудника ID {staff_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка базы данных при обновлении сотрудника: {e}")
+    except HTTPException as e: # Перехватываем свои же ошибки 404/400
         db.rollback()
-        logger.error(f"Неожиданная ошибка при обновлении сотрудника ID {staff_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {e}")
+        raise e # Пробрасываем их дальше
+    except Exception as e: # Ловим остальные ошибки
+        db.rollback()
+        logger.error(f"Непредвиденная ошибка при обновлении сотрудника ID {staff_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера при обновлении сотрудника: {str(e)}")
 
-    # 6. Получаем финальную запись сотрудника из БД
-    cursor.execute("SELECT * FROM staff WHERE id = ?", (staff_id,))
-    updated_staff_db = cursor.fetchone()
-    if not updated_staff_db:
-        logger.error(f"Критическая ошибка: не удалось найти только что обновленного сотрудника ID {staff_id}")
+    # Получаем обновленные данные сотрудника (используем get_staff_list с limit=1 для получения должности)
+    # Это не самый эффективный способ, но он использует уже существующую логику
+       
+    # Найдем нашего обновленного пользователя в списке (должен быть один)
+    # В реальном приложении лучше сделать отдельную функцию get_staff_member_with_position
+    found_staff = None
+    # Перезапрашиваем конкретного пользователя, чтобы получить обновленные данные
+    cursor.execute("""
+        SELECT 
+            s.id, s.email, s.first_name, s.last_name, s.middle_name, s.phone,
+            p.name as position_name,
+            s.description, s.is_active, s.organization_id, 
+            s.primary_organization_id, s.location_id, s.registration_address, 
+            s.actual_address, s.telegram_id, s.vk, s.instagram, 
+            s.created_at, s.updated_at 
+        FROM staff s
+        LEFT JOIN staff_positions sp ON s.id = sp.staff_id AND sp.is_primary = 1
+        LEFT JOIN positions p ON sp.position_id = p.id
+        WHERE s.id = ?
+    """, (staff_id,))
+    
+    updated_staff_row = cursor.fetchone()
+
+    if not updated_staff_row:
+        logger.error(f"Не удалось получить данные сотрудника ID {staff_id} после обновления")
         raise HTTPException(status_code=500, detail="Ошибка получения данных обновленного сотрудника")
 
-    final_doc_paths = []
-    if updated_staff_db["document_paths"]:
-        try:
-            final_doc_paths = json.loads(updated_staff_db["document_paths"])
-        except json.JSONDecodeError:
-            logger.error(f"Ошибка декодирования JSON путей документов для сотрудника ID {staff_id} после обновления")
-
-    staff_response = Staff(
-        id=updated_staff_db["id"],
-        email=updated_staff_db["email"],
-        first_name=updated_staff_db["first_name"],
-        last_name=updated_staff_db["last_name"],
-        middle_name=updated_staff_db["middle_name"],
-        phone=updated_staff_db["phone"],
-        description=updated_staff_db["description"],
-        is_active=bool(updated_staff_db["is_active"]),
-        organization_id=updated_staff_db["organization_id"],
-        primary_organization_id=updated_staff_db["primary_organization_id"],
-        location_id=updated_staff_db["location_id"],
-        registration_address=updated_staff_db["registration_address"],
-        actual_address=updated_staff_db["actual_address"],
-        telegram_id=updated_staff_db["telegram_id"],
-        vk=updated_staff_db["vk"],
-        instagram=updated_staff_db["instagram"],
-        created_at=updated_staff_db["created_at"],
-        updated_at=updated_staff_db["updated_at"],
-        photo_path=updated_staff_db["photo_path"],
-        document_paths=final_doc_paths
-    )
-    logger.info(f"Сотрудник {staff_response.email} (ID: {staff_response.id}) успешно обновлен.")
-    return staff_response
+    # Собираем словарь для модели Staff
+    updated_staff_dict = dict(updated_staff_row)
+    updated_staff_dict["position"] = updated_staff_dict.pop("position_name", None)
+    updated_staff_dict["is_active"] = bool(updated_staff_dict["is_active"])
+    
+    # Валидируем и возвращаем
+    try:
+        validated_staff = Staff.model_validate(updated_staff_dict)
+        logger.info(f"Возвращаем обновленные данные сотрудника ID {staff_id}")
+        return validated_staff
+    except Exception as e:
+        logger.error(f"Ошибка валидации данных сотрудника ID {staff_id} после обновления: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Ошибка валидации данных после обновления")
 
 @app.delete("/staff/{staff_id}", response_model=dict)
 def delete_staff(staff_id: int, db: sqlite3.Connection = Depends(get_db)):
@@ -2431,7 +2377,7 @@ if __name__ == "__main__":
     logger.info("Выполняется явная инициализация базы данных перед запуском...")
     init_db()
     logger.info("Явная инициализация базы данных завершена.")
-    uvicorn.run("full_api:app", host="127.0.0.1", port=8000, reload=True) 
+    uvicorn.run("full_api:app", host="127.0.0.1", port=8001, reload=True) 
 
 # API для локаций (чтение организаций с типом 'location')
 @app.get("/locations/", response_model=List[LocationInfo])
@@ -2712,8 +2658,8 @@ class FunctionCreate(FunctionBase):
 
 class Function(FunctionBase):
     id: int
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
@@ -2929,39 +2875,59 @@ def delete_function(
     db: sqlite3.Connection = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Удалить функцию."""
     try:
         cursor = db.cursor()
         
         # Проверяем существование функции
-        cursor.execute("SELECT id FROM functions WHERE id = ?", (function_id,))
+        cursor.execute("SELECT * FROM functions WHERE id = ?", (function_id,))
         if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Функция не найдена")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Функция с ID {function_id} не найдена"
+            )
         
         # Удаляем функцию
         cursor.execute("DELETE FROM functions WHERE id = ?", (function_id,))
-        
-        # Фиксируем изменения
         db.commit()
         
-        return {"status": "success"}
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         
     except sqlite3.Error as e:
         db.rollback()
+        logging.error(f"Ошибка SQLite при удалении функции {function_id}: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Ошибка базы данных при удалении функции: {str(e)}"
         )
     except Exception as e:
         db.rollback()
+        logging.error(f"Внутренняя ошибка при удалении функции {function_id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Ошибка при удалении функции: {str(e)}"
+            detail=f"Внутренняя ошибка сервера: {str(e)}"
         )
 
-# <<-- НАЧАЛО ЭНДПОИНТОВ ДЛЯ ДОЛЖНОСТЕЙ (Positions) -->>
+# Модели для функциональных назначений
+class FunctionalAssignmentBase(BaseModel):
+    position_id: int
+    function_id: int
+    percentage: int = 100
+    is_primary: bool = False
 
-# Вспомогательная функция для получения функций должности
+class FunctionalAssignmentCreate(FunctionalAssignmentBase):
+    pass
+
+class FunctionalAssignment(FunctionalAssignmentBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# Модели для Section_Function
+
+# Вспомогательная функция для получения функций для должности
 def _get_functions_for_position(db: sqlite3.Connection, position_id: int) -> List[Function]:
     cursor = db.cursor()
     cursor.execute("""
@@ -3321,149 +3287,397 @@ def delete_position(
 
 # <<-- КОНЕЦ ЭНДПОИНТОВ ДЛЯ ДОЛЖНОСТЕЙ (Positions) -->>
 
-# <<-- НАЧАЛО ЭНДПОИНТОВ ДЛЯ СОТРУДНИКОВ (Staff) -->>
+# <<-- НАЧАЛО ЭНДПОИНТОВ ДЛЯ ФУНКЦИОНАЛЬНЫХ НАЗНАЧЕНИЙ (FunctionalAssignments) -->>
 
-# Эндпоинт для получения списка сотрудников (ДОБАВЛЕНО)
-@app.get("/staff/", response_model=List[Staff], tags=["Staff"]) 
-def read_staff(
-    skip: int = 0, 
-    limit: int = 100, 
-    is_active: Optional[bool] = Query(None, description="Фильтр по активности"),
-    # Добавим другие возможные фильтры, например, по части имени
-    name_filter: Optional[str] = Query(None, alias="name", description="Фильтр по части имени, фамилии или отчества (регистронезависимый)"),
-    # Можно добавить фильтры по организации, должности и т.д., если нужно
-    db: sqlite3.Connection = Depends(get_db), 
+@app.get("/functional-assignments/", response_model=List[FunctionalAssignment], tags=["FunctionalAssignments"])
+def read_functional_assignments(
+    skip: int = 0,
+    limit: int = 100,
+    position_id: Optional[int] = Query(None, description="Фильтр по ID должности"),
+    function_id: Optional[int] = Query(None, description="Фильтр по ID функции"),
+    is_primary: Optional[bool] = Query(None, description="Фильтр по признаку 'основная'"),
+    db: sqlite3.Connection = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Получить список сотрудников с фильтрацией и пагинацией."""
-    cursor = db.cursor()
-    query = "SELECT * FROM staff WHERE 1=1"
-    params = []
-
-    if is_active is not None:
-        query += " AND is_active = ?"
-        params.append(1 if is_active else 0)
-    
-    if name_filter:
-        # Ищем по совпадению в любом из полей имени
-        query += " AND (LOWER(first_name) LIKE LOWER(?) OR LOWER(last_name) LIKE LOWER(?) OR LOWER(middle_name) LIKE LOWER(?))"
-        like_pattern = f"%{name_filter}%"
-        params.extend([like_pattern, like_pattern, like_pattern])
-
-    query += " ORDER BY last_name, first_name LIMIT ? OFFSET ?"
-    params.extend([limit, skip])
-
     try:
+        cursor = db.cursor()
+        
+        # Базовый запрос
+        query = "SELECT * FROM functional_assignments"
+        params = []
+        conditions = []
+        
+        # Добавляем условия фильтрации
+        if position_id is not None:
+            conditions.append("position_id = ?")
+            params.append(position_id)
+        
+        if function_id is not None:
+            conditions.append("function_id = ?")
+            params.append(function_id)
+        
+        if is_primary is not None:
+            conditions.append("is_primary = ?")
+            params.append(1 if is_primary else 0)
+        
+        # Формируем полный запрос
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        query += f" LIMIT {limit} OFFSET {skip}"
+        
+        # Выполняем запрос
         cursor.execute(query, params)
-        staff_list_db = cursor.fetchall()
-        # Преобразуем каждую строку в объект Staff
-        staff_list = [Staff.model_validate(dict(row)) for row in staff_list_db]
-        return staff_list
+        assignments = cursor.fetchall()
+        
+        # Преобразуем результаты в список словарей
+        result = []
+        for assignment in assignments:
+            assignment_dict = dict(assignment)
+            assignment_dict["is_primary"] = bool(assignment_dict["is_primary"])
+            result.append(assignment_dict)
+        
+        return result
+        
     except sqlite3.Error as e:
-        logger.error(f"Ошибка БД при получении списка сотрудников: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Ошибка базы данных при получении списка сотрудников")
+        logger.error(f"Ошибка SQLite при получении функциональных назначений: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка базы данных при получении функциональных назначений: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Внутренняя ошибка при получении функциональных назначений: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Внутренняя ошибка сервера: {str(e)}"
+        )
 
-# Эндпоинт для создания сотрудника (АКТУАЛЬНАЯ ВЕРСИЯ)
-@app.post("/staff/", response_model=Staff, status_code=status.HTTP_201_CREATED, tags=["Staff"])
-def create_staff(
-    staff_data: StaffCreate,
+@app.get("/functional-assignments/{assignment_id}", response_model=FunctionalAssignment, tags=["FunctionalAssignments"])
+def read_functional_assignment(
+    assignment_id: int,
     db: sqlite3.Connection = Depends(get_db),
-    # Убираем current_user, если создание сотрудника не требует аутентификации
-    # current_user: User = Depends(get_current_active_user) 
+    current_user: User = Depends(get_current_active_user)
 ):
-    """Создать нового сотрудника. Опционально создает связанную учетную запись User."""
-    logger.info(f"Попытка создания сотрудника: {staff_data.email}")
-    cursor = db.cursor()
-    user_id_to_link: Optional[int] = None
-
-    # --- Логика создания User (если нужно) --- 
-    if staff_data.create_user_account:
-        logger.info(f"Запрошено создание учетной записи для {staff_data.email}")
-        # <<-- ПРОВЕРКА ПАРОЛЯ НА МЕСТЕ -->>
-        if not staff_data.password:
-            logger.warning(f"Попытка создать User для {staff_data.email} без пароля.")
-            raise HTTPException(status_code=400, detail="Пароль обязателен при создании учетной записи пользователя.")
-        
-        # 1. Проверяем, не занят ли email в таблице user
-        cursor.execute("SELECT id FROM user WHERE email = ?", (staff_data.email,))
-        existing_user = cursor.fetchone()
-        if existing_user:
-            raise HTTPException(status_code=400, detail=f"Учетная запись с email {staff_data.email} уже существует.")
-        
-        # 2. Создаем запись в user
-        try:
-            hashed_password = get_password_hash(staff_data.password) # Теперь тут не будет None
-            # Формируем full_name для user из данных staff
-            full_name_for_user = f"{staff_data.last_name} {staff_data.first_name}".strip()
-            if staff_data.middle_name:
-                full_name_for_user += f" {staff_data.middle_name}"
-                
-            cursor.execute("""
-                INSERT INTO user (email, hashed_password, full_name, is_active, is_superuser)
-                VALUES (?, ?, ?, ?, ?)
-            """, (staff_data.email, hashed_password, full_name_for_user, 1, 0))
-            user_id_to_link = cursor.lastrowid
-            logger.info(f"Создана учетная запись User ID: {user_id_to_link} для {staff_data.email}")
-            # Коммит нужен здесь, чтобы user точно создался перед staff
-            # db.commit() # <-- Коммит здесь может быть рискованным, если создание staff упадет
-        except sqlite3.Error as e:
-            # db.rollback() # Откатывать нечего, если не было коммита
-            logger.error(f"Ошибка БД при создании User для {staff_data.email}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Ошибка базы данных при создании учетной записи пользователя")
-    # --- Конец логики создания User --- 
-
-    # --- Логика создания Staff --- 
-    # Проверяем, не существует ли уже сотрудник с таким email в таблице staff
-    cursor.execute("SELECT id FROM staff WHERE email = ?", (staff_data.email,))
-    existing_staff = cursor.fetchone()
-    if existing_staff:
-        # Если мы создавали User, его нужно откатить/удалить, т.к. Staff не создастся
-        # Но т.к. мы еще не делали commit, достаточно просто db.rollback() перед выходом
-        db.rollback()
-        raise HTTPException(status_code=409, detail=f"Сотрудник с email {staff_data.email} уже существует.")
-
     try:
-        # Формируем данные для вставки в staff
-        staff_values = staff_data.model_dump(exclude={"create_user_account", "password"}) # Исключаем поля, обработанные выше
-        staff_values["user_id"] = user_id_to_link # Добавляем ID созданного пользователя (или None)
-
-        # Определяем колонки и плейсхолдеры динамически
-        columns = ", ".join(staff_values.keys())
-        placeholders = ", ".join(["?"] * len(staff_values))
-        values_tuple = tuple(staff_values.values())
-
-        # Вставляем запись в staff
-        cursor.execute(f"""
-            INSERT INTO staff ({columns}) 
-            VALUES ({placeholders})
-        """, values_tuple)
-        staff_id = cursor.lastrowid
-        db.commit() # Коммитим И User (если был) И Staff вместе
-        logger.info(f"Сотрудник ID: {staff_id} успешно создан для {staff_data.email}")
+        cursor = db.cursor()
         
-        # Получаем созданную запись
-        cursor.execute("SELECT * FROM staff WHERE id = ?", (staff_id,))
-        created_staff_row = cursor.fetchone()
-        if not created_staff_row:
-            # Это маловероятно после успешной вставки, но для надежности
-            # Откатить уже не можем, т.к. был commit
-            logger.error(f"Критическая ошибка: не удалось получить сотрудника ID {staff_id} после commit.")
-            raise HTTPException(status_code=500, detail="Не удалось получить созданного сотрудника после вставки.")
+        # Получаем назначение
+        cursor.execute("SELECT * FROM functional_assignments WHERE id = ?", (assignment_id,))
+        assignment = cursor.fetchone()
+        
+        if not assignment:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Функциональное назначение с ID {assignment_id} не найдено"
+            )
+        
+        # Преобразуем результат в словарь
+        assignment_dict = dict(assignment)
+        assignment_dict["is_primary"] = bool(assignment_dict["is_primary"])
+        
+        return assignment_dict
+        
+    except sqlite3.Error as e:
+        logging.error(f"Ошибка SQLite при получении функционального назначения {assignment_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка базы данных при получении функционального назначения: {str(e)}"
+        )
+    except Exception as e:
+        logging.error(f"Внутренняя ошибка при получении функционального назначения {assignment_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Внутренняя ошибка сервера: {str(e)}"
+        )
 
-        return dict(created_staff_row) # Возвращаем как словарь
-    
-    except sqlite3.IntegrityError as e:
-        db.rollback() # Откатываем транзакцию (включая User, если он был создан без коммита ранее)
-        logger.warning(f"Ошибка целостности при создании Staff {staff_data.email}: {e}", exc_info=True)
-        # Проверяем, какое ограничение нарушено (хотя мы уже проверили email)
-        if "UNIQUE constraint failed: staff.email" in str(e):
-             # Эта ветка не должна сработать из-за проверки выше, но на всякий случай
-            raise HTTPException(status_code=409, detail=f"Сотрудник с email {staff_data.email} уже существует (повторная проверка).")
-        # Можно добавить обработку других UNIQUE constraint, если они есть
-        raise HTTPException(status_code=400, detail=f"Ошибка целостности данных: {e}")
+@app.post("/functional-assignments/", response_model=FunctionalAssignment, status_code=status.HTTP_201_CREATED, tags=["FunctionalAssignments"])
+def create_functional_assignment(
+    assignment_data: FunctionalAssignmentCreate,
+    db: sqlite3.Connection = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    try:
+        cursor = db.cursor()
+        
+        # Проверяем существование должности
+        cursor.execute("SELECT id FROM positions WHERE id = ?", (assignment_data.position_id,))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Должность с ID {assignment_data.position_id} не найдена"
+            )
+        
+        # Проверяем существование функции
+        cursor.execute("SELECT id FROM functions WHERE id = ?", (assignment_data.function_id,))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Функция с ID {assignment_data.function_id} не найдена"
+            )
+        
+        # Создаем новое функциональное назначение
+        cursor.execute(
+            """
+            INSERT INTO functional_assignments 
+            (position_id, function_id, percentage, is_primary) 
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                assignment_data.position_id,
+                assignment_data.function_id,
+                assignment_data.percentage,
+                1 if assignment_data.is_primary else 0
+            )
+        )
+        
+        assignment_id = cursor.lastrowid
+        db.commit()
+        
+        # Получаем созданное назначение
+        cursor.execute("SELECT * FROM functional_assignments WHERE id = ?", (assignment_id,))
+        new_assignment = cursor.fetchone()
+        
+        # Преобразуем результат в словарь
+        assignment_dict = dict(new_assignment)
+        assignment_dict["is_primary"] = bool(assignment_dict["is_primary"])
+        
+        return assignment_dict
+        
     except sqlite3.Error as e:
         db.rollback()
-        logger.error(f"Ошибка БД при создании Staff {staff_data.email}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Ошибка базы данных при создании сотрудника.")
+        logging.error(f"Ошибка SQLite при создании функционального назначения: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка базы данных при создании функционального назначения: {str(e)}"
+        )
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Внутренняя ошибка при создании функционального назначения: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Внутренняя ошибка сервера: {str(e)}"
+        )
 
-# ... (остальные эндпоинты) ...
+@app.put("/functional-assignments/{assignment_id}", response_model=FunctionalAssignment, tags=["FunctionalAssignments"])
+def update_functional_assignment(
+    assignment_id: int,
+    assignment_data: FunctionalAssignmentCreate,
+    db: sqlite3.Connection = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    try:
+        cursor = db.cursor()
+        
+        # Проверяем существование назначения
+        cursor.execute("SELECT * FROM functional_assignments WHERE id = ?", (assignment_id,))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Функциональное назначение с ID {assignment_id} не найдено"
+            )
+        
+        # Проверяем существование должности
+        cursor.execute("SELECT id FROM positions WHERE id = ?", (assignment_data.position_id,))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Должность с ID {assignment_data.position_id} не найдена"
+            )
+        
+        # Проверяем существование функции
+        cursor.execute("SELECT id FROM functions WHERE id = ?", (assignment_data.function_id,))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Функция с ID {assignment_data.function_id} не найдена"
+            )
+        
+        # Обновляем функциональное назначение
+        cursor.execute(
+            """
+            UPDATE functional_assignments 
+            SET position_id = ?, function_id = ?, percentage = ?, is_primary = ?
+            WHERE id = ?
+            """,
+            (
+                assignment_data.position_id,
+                assignment_data.function_id,
+                assignment_data.percentage,
+                1 if assignment_data.is_primary else 0,
+                assignment_id
+            )
+        )
+        
+        db.commit()
+        
+        # Получаем обновленное назначение
+        cursor.execute("SELECT * FROM functional_assignments WHERE id = ?", (assignment_id,))
+        updated_assignment = cursor.fetchone()
+        
+        # Преобразуем результат в словарь
+        assignment_dict = dict(updated_assignment)
+        assignment_dict["is_primary"] = bool(assignment_dict["is_primary"])
+        
+        return assignment_dict
+        
+    except sqlite3.Error as e:
+        db.rollback()
+        logging.error(f"Ошибка SQLite при обновлении функционального назначения {assignment_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка базы данных при обновлении функционального назначения: {str(e)}"
+        )
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Внутренняя ошибка при обновлении функционального назначения {assignment_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Внутренняя ошибка сервера: {str(e)}"
+        )
+
+@app.delete("/functional-assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["FunctionalAssignments"])
+def delete_functional_assignment(
+    assignment_id: int,
+    db: sqlite3.Connection = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    try:
+        cursor = db.cursor()
+        
+        # Проверяем существование назначения
+        cursor.execute("SELECT * FROM functional_assignments WHERE id = ?", (assignment_id,))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Функциональное назначение с ID {assignment_id} не найдено"
+            )
+        
+        # Удаляем назначение
+        cursor.execute("DELETE FROM functional_assignments WHERE id = ?", (assignment_id,))
+        db.commit()
+        
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        
+    except sqlite3.Error as e:
+        db.rollback()
+        logging.error(f"Ошибка SQLite при удалении функционального назначения {assignment_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка базы данных при удалении функционального назначения: {str(e)}"
+        )
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Внутренняя ошибка при удалении функционального назначения {assignment_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Внутренняя ошибка сервера: {str(e)}"
+        )
+
+# <<-- КОНЕЦ ЭНДПОИНТОВ ДЛЯ ФУНКЦИОНАЛЬНЫХ НАЗНАЧЕНИЙ (FunctionalAssignments) -->>
+
+# <<-- НАЧАЛО ЭНДПОИНТОВ ДЛЯ СОТРУДНИКОВ (Staff) -->>
+@app.get("/staff/by-position/{position_id}", response_model=List[Staff], tags=["Staff"])
+def get_staff_by_position(
+    position_id: int,
+    db: sqlite3.Connection = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    try:
+        logging.info(f"Запрос сотрудников для должности ID: {position_id}") # <--- ДОБАВЛЕНО ЛОГИРОВАНИЕ
+        cursor = db.cursor()
+
+        # Находим всех сотрудников, занимающих указанную должность (активных)
+        cursor.execute("SELECT * FROM staff WHERE id IN (SELECT staff_id FROM staff_positions WHERE position_id = ? AND is_active = 1)", (position_id,))
+        staff_list = cursor.fetchall()
+
+        return [Staff.model_validate(dict(staff)) for staff in staff_list]
+    except sqlite3.Error as e:
+        logger.error(f"Ошибка БД при получении сотрудников для должности ID {position_id}: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка базы данных при получении сотрудников")
+    except Exception as e:
+        logger.error(f"Внутренняя ошибка при получении сотрудников для должности ID {position_id}: {e}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера при получении сотрудников")
+
+@app.get("/staff/", response_model=List[Staff], tags=["Staff"])
+def get_staff_list(
+    skip: int = 0,
+    limit: int = 100,
+    organization_id: Optional[int] = None,
+    division_id: Optional[int] = None, 
+    is_active: Optional[bool] = None,
+    db: sqlite3.Connection = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Получить список сотрудников с фильтрацией и пагинацией, включая название основной должности.
+    Если основная должность не задана (is_primary = 1), берется самая последняя добавленная (по created_at).
+    """
+    try:
+        cursor = db.cursor()
+
+        # Обновленный запрос для получения последней должности, если нет основной
+        query = """
+            SELECT
+                s.id, s.email, s.first_name, s.last_name, s.middle_name, s.phone,
+                p.name as position_name,
+                s.description, s.is_active, s.organization_id,
+                s.primary_organization_id, s.location_id, s.registration_address,
+                s.actual_address, s.telegram_id, s.vk, s.instagram,
+                s.created_at, s.updated_at
+            FROM staff s
+            LEFT JOIN (
+                SELECT sp.staff_id, sp.position_id, MAX(sp.created_at) as latest_created
+                FROM staff_positions sp
+                GROUP BY sp.staff_id
+            ) latest_pos ON s.id = latest_pos.staff_id
+            LEFT JOIN staff_positions sp ON (
+                s.id = sp.staff_id AND (
+                    (sp.is_primary = 1) OR -- Основная должность
+                    (latest_pos.latest_created = sp.created_at) -- Или самая последняя, если основной нет
+                )
+            )
+            LEFT JOIN positions p ON sp.position_id = p.id
+            WHERE 1=1
+        """
+        params = []
+
+        if organization_id is not None:
+            query += " AND s.primary_organization_id = ?"
+            params.append(organization_id)
+
+        if is_active is not None:
+            query += " AND s.is_active = ?"
+            params.append(1 if is_active else 0)
+
+        query += " ORDER BY s.last_name, s.first_name LIMIT ? OFFSET ?"
+        params.extend([limit, skip])
+
+        cursor.execute(query, params)
+        staff_list = cursor.fetchall()
+
+        # Преобразуем каждую строку в словарь и подставляем имя должности
+        result = []
+        column_names = [description[0] for description in cursor.description]
+        for staff_row in staff_list:
+            staff_dict = dict(zip(column_names, staff_row))
+            # Переименовываем 'position_name' в 'position' для соответствия модели Staff
+            staff_dict["position"] = staff_dict.pop("position_name", None)
+            staff_dict["is_active"] = bool(staff_dict["is_active"])
+            result.append(Staff.model_validate(staff_dict))
+
+        return result
+
+    except sqlite3.Error as e:
+        logging.error(f"Ошибка SQLite при получении списка сотрудников: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка базы данных при получении списка сотрудников: {str(e)}"
+        )
+    except Exception as e:
+        logging.error(f"Внутренняя ошибка при получении списка сотрудников: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Внутренняя ошибка сервера: {str(e)}"
+        )
+
+# ... (остальные эндпоинты для Staff)

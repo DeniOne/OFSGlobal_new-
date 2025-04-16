@@ -2,6 +2,35 @@ import sqlite3
 import os
 import sys
 
+def clean_orphan_hierarchy_relations(conn, cursor):
+    """
+    Удаляет "осиротевшие" записи из таблицы hierarchy_relations,
+    т.е. те, у которых superior_position_id или subordinate_position_id
+    не существуют в таблице positions.
+    """
+    print("\nПроверяем и удаляем осиротевшие иерархические связи...")
+    
+    # Сначала посчитаем, сколько записей будем удалять
+    cursor.execute("""
+        SELECT COUNT(*) FROM hierarchy_relations
+        WHERE superior_position_id NOT IN (SELECT id FROM positions)
+           OR subordinate_position_id NOT IN (SELECT id FROM positions)
+    """)
+    count_to_delete = cursor.fetchone()[0]
+    
+    if count_to_delete > 0:
+        print(f"Найдено {count_to_delete} осиротевших связей. Удаляем...")
+        # Удаляем записи
+        cursor.execute("""
+            DELETE FROM hierarchy_relations
+            WHERE superior_position_id NOT IN (SELECT id FROM positions)
+               OR subordinate_position_id NOT IN (SELECT id FROM positions)
+        """)
+        conn.commit()
+        print("Осиротевшие связи успешно удалены.")
+    else:
+        print("Осиротевшие связи не найдены.")
+
 def fix_tables():
     """
     Проверяет и исправляет все необходимые таблицы в базе данных.
@@ -75,6 +104,64 @@ def fix_tables():
                     FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE CASCADE
                 )
                 """
+            },
+            # Добавляем таблицу hierarchy_relations для иерархических связей между должностями
+            {
+                "name": "hierarchy_relations",
+                "schema": """
+                CREATE TABLE IF NOT EXISTS hierarchy_relations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    superior_position_id INTEGER NOT NULL,
+                    subordinate_position_id INTEGER NOT NULL,
+                    priority INTEGER NOT NULL DEFAULT 1,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    description TEXT,
+                    extra_field1 TEXT,
+                    extra_field2 TEXT,
+                    extra_int1 INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (superior_position_id) REFERENCES positions(id) ON DELETE CASCADE,
+                    FOREIGN KEY (subordinate_position_id) REFERENCES positions(id) ON DELETE CASCADE
+                )
+                """
+            },
+            # Добавляем таблицу unit_management для связей между должностями и подразделениями/отделами
+            {
+                "name": "unit_management",
+                "schema": """
+                CREATE TABLE IF NOT EXISTS unit_management (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    position_id INTEGER NOT NULL,
+                    managed_type VARCHAR(20) NOT NULL,
+                    managed_id INTEGER NOT NULL,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    description TEXT,
+                    extra_field1 TEXT,
+                    extra_field2 TEXT,
+                    extra_int1 INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE
+                )
+                """
+            },
+            # Добавляем таблицу functional_assignments для функциональных назначений
+            {
+                "name": "functional_assignments",
+                "schema": """
+                CREATE TABLE IF NOT EXISTS functional_assignments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    position_id INTEGER NOT NULL,
+                    function_id INTEGER NOT NULL,
+                    percentage INTEGER DEFAULT 100,
+                    is_primary INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
+                    FOREIGN KEY (function_id) REFERENCES functions(id) ON DELETE CASCADE
+                )
+                """
             }
         ]
         
@@ -106,6 +193,23 @@ def fix_tables():
                     elif table_name == "sections":
                         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_division_id ON {table_name}(division_id)")
                         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_code ON {table_name}(code)")
+                    # Индексы для новых таблиц hierarchy_relations
+                    elif table_name == "hierarchy_relations":
+                        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_superior_id ON {table_name}(superior_position_id)")
+                        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_subordinate_id ON {table_name}(subordinate_position_id)")
+                        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_priority ON {table_name}(priority)")
+                        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_is_active ON {table_name}(is_active)")
+                    # Индексы для новых таблиц unit_management
+                    elif table_name == "unit_management":
+                        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_position_id ON {table_name}(position_id)")
+                        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_managed_type ON {table_name}(managed_type)")
+                        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_managed_id ON {table_name}(managed_id)")
+                        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_is_active ON {table_name}(is_active)")
+                    # Индексы для таблицы functional_assignments
+                    elif table_name == "functional_assignments":
+                        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_position_id ON {table_name}(position_id)")
+                        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_function_id ON {table_name}(function_id)")
+                        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_is_primary ON {table_name}(is_primary)")
                     
                     conn.commit()
                     print(f"Таблица {table_name} успешно создана!")
@@ -131,6 +235,40 @@ def fix_tables():
                     else:
                         print(f"Колонка {check_column} уже существует в таблице {table_name}.")
         
+        # <<-- ОЧИСТКА ОСИРОТЕВШИХ СВЯЗЕЙ -->>
+        # Вызываем функцию очистки ПОСЛЕ проверки/создания таблиц, но ДО добавления тестовых данных
+        clean_orphan_hierarchy_relations(conn, cursor)
+
+        # <<-- ИСПРАВЛЕНИЕ АТРИБУТОВ ДОЛЖНОСТЕЙ -->>
+        print("\nПроверяем и исправляем атрибуты должностей в таблице positions...")
+        attribute_updates = {
+            # Старое значение из БД : Новое значение из Enum PositionAttribute
+            "Директор": "Директор Направления",
+            "Руководитель отдела": "Руководитель Отдела",
+            "Руководитель департамента": "Руководитель Департамента",
+            "Высшее руководство": "Высшее Руководство (Генеральный Директор)",
+            "Совет Учредителей": "Совет Учредителей", # На всякий случай, если было другое
+            "Специалист": "Специалист", # И это тоже
+            # Добавь сюда другие неправильные значения, если они всплывут в логах
+        }
+        updated_count = 0
+        for old_attr, new_attr in attribute_updates.items():
+            try:
+                cursor.execute("UPDATE positions SET attribute = ? WHERE attribute = ?", (new_attr, old_attr))
+                # Проверяем, сколько строк было затронуто
+                if cursor.rowcount > 0:
+                    print(f"  - Обновлено {cursor.rowcount} записей с '{old_attr}' на '{new_attr}'.")
+                    updated_count += cursor.rowcount
+            except sqlite3.Error as e:
+                print(f"Ошибка при обновлении атрибута '{old_attr}' на '{new_attr}': {e}")
+        
+        if updated_count > 0:
+            conn.commit()
+            print(f"Исправление атрибутов завершено. Всего обновлено: {updated_count} записей.")
+        else:
+            print("Атрибуты должностей не требовали исправлений.")
+        # <<-- КОНЕЦ ИСПРАВЛЕНИЯ АТРИБУТОВ -->>
+
         # Проверяем наличие организаций
         cursor.execute("SELECT COUNT(*) FROM organizations")
         org_count = cursor.fetchone()[0]
@@ -188,6 +326,185 @@ def fix_tables():
             """, (div_id, div_id, div_id))
             conn.commit()
             print("Тестовые отделы добавлены!")
+            
+        # <<-- ДОБАВЛЯЕМ ОЧИСТКУ POSITIONS -->>
+        print("\nОчищаем таблицу positions перед добавлением тестовых данных...")
+        cursor.execute("DELETE FROM positions")
+        conn.commit() # Сохраняем удаление
+        
+        # Проверяем наличие должностей с разными атрибутами
+        cursor.execute("SELECT COUNT(*) FROM positions")
+        pos_count = cursor.fetchone()[0]
+        if pos_count == 0:
+            print("\nВ таблице positions нет записей. Добавляем тестовые должности...")
+            
+            # Получаем ID тестового подразделения и отдела
+            cursor.execute("SELECT id FROM divisions LIMIT 1")
+            div_id = cursor.fetchone()[0]
+            cursor.execute("SELECT id FROM sections LIMIT 1")
+            sec_id = cursor.fetchone()[0]
+            
+            # Добавляем базовые должности с разными атрибутами для тестирования
+            cursor.execute("""
+            INSERT INTO positions (name, description, is_active, attribute, division_id, section_id)
+            VALUES
+            ('Генеральный директор', 'Руководитель компании', 1, 'Директор', NULL, NULL),
+            ('Финансовый директор', 'Руководитель финансового департамента', 1, 'Директор', ?, NULL),
+            ('Руководитель IT-департамента', 'Руководитель IT-департамента', 1, 'Руководитель департамента', ?, NULL),
+            ('Руководитель отдела разработки', 'Руководитель отдела разработки', 1, 'Руководитель отдела', ?, ?),
+            ('Разработчик', 'Создание ПО', 1, 'Специалист', ?, ?),
+            ('Тестировщик', 'Тестирование ПО', 1, 'Специалист', ?, ?);
+            """, (div_id, div_id, div_id, sec_id, div_id, sec_id, div_id, sec_id))
+            conn.commit()
+            print("Тестовые должности добавлены!")
+        
+        # <<-- ДОБАВЛЯЕМ УДАЛЕНИЕ СТАРЫХ ДАННЫХ -->>
+        print("\nОчищаем таблицу hierarchy_relations перед добавлением тестовых данных...")
+        cursor.execute("DELETE FROM hierarchy_relations")
+        conn.commit() # Сохраняем удаление
+        
+        # Создание тестовых связей иерархии
+        cursor.execute("SELECT COUNT(*) FROM hierarchy_relations")
+        hr_count = cursor.fetchone()[0]
+        if hr_count == 0:
+            # Проверим, что у нас есть должности для создания иерархии
+            cursor.execute("SELECT COUNT(*) FROM positions")
+            pos_count = cursor.fetchone()[0]
+            
+            if pos_count >= 2:
+                print("\nВ таблице hierarchy_relations нет записей. Добавляем тестовые иерархические связи...")
+                
+                # Получаем ID должностей для создания иерархии
+                cursor.execute("SELECT id FROM positions WHERE attribute = 'Директор' LIMIT 1")
+                director_id = cursor.fetchone()
+                
+                if director_id:
+                    director_id = director_id[0]
+                    
+                    # Получим другие должности
+                    cursor.execute("SELECT id, attribute FROM positions WHERE id != ?", (director_id,))
+                    other_positions = cursor.fetchall()
+                    
+                    # Создаем иерархию
+                    for pos_id, attribute in other_positions:
+                        priority = 1
+                        
+                        # Для директоров и руководителей департаментов - прямое подчинение гендиректору
+                        if attribute in ['Директор', 'Руководитель департамента']:
+                            cursor.execute("""
+                            INSERT INTO hierarchy_relations 
+                            (superior_position_id, subordinate_position_id, priority, description)
+                            VALUES (?, ?, ?, ?)
+                            """, (director_id, pos_id, priority, f"Подчинение {attribute} генеральному директору"))
+                    
+                    # Для руководителей отделов - подчинение руководителям департаментов
+                    cursor.execute("SELECT id FROM positions WHERE attribute = 'Руководитель департамента' LIMIT 1")
+                    dep_head_id = cursor.fetchone()
+                    
+                    if dep_head_id:
+                        dep_head_id = dep_head_id[0]
+                        cursor.execute("SELECT id FROM positions WHERE attribute = 'Руководитель отдела'")
+                        section_heads = cursor.fetchall()
+                        
+                        for section_head in section_heads:
+                            section_head_id = section_head[0]
+                            cursor.execute("""
+                            INSERT INTO hierarchy_relations 
+                            (superior_position_id, subordinate_position_id, priority, description)
+                            VALUES (?, ?, ?, ?)
+                            """, (dep_head_id, section_head_id, 1, "Подчинение руководителя отдела руководителю департамента"))
+                    
+                    # Для специалистов - подчинение руководителям отделов
+                    cursor.execute("SELECT id FROM positions WHERE attribute = 'Руководитель отдела' LIMIT 1")
+                    section_head_id = cursor.fetchone()
+                    
+                    if section_head_id:
+                        section_head_id = section_head_id[0]
+                        cursor.execute("SELECT id FROM positions WHERE attribute = 'Специалист'")
+                        specialists = cursor.fetchall()
+                        
+                        for specialist in specialists:
+                            specialist_id = specialist[0]
+                            cursor.execute("""
+                            INSERT INTO hierarchy_relations 
+                            (superior_position_id, subordinate_position_id, priority, description)
+                            VALUES (?, ?, ?, ?)
+                            """, (section_head_id, specialist_id, 1, "Подчинение специалиста руководителю отдела"))
+                    
+                    conn.commit()
+                    print("Тестовые иерархические связи добавлены!")
+        
+        # Создание тестовых связей управления подразделениями, если таблица только что создана
+        cursor.execute("SELECT COUNT(*) FROM unit_management")
+        um_count = cursor.fetchone()[0]
+        if um_count == 0:
+            # Проверим, что у нас есть должности и подразделения для создания связей
+            cursor.execute("SELECT COUNT(*) FROM positions")
+            pos_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM divisions")
+            div_count = cursor.fetchone()[0]
+            
+            if pos_count > 0 and div_count > 0:
+                print("\nВ таблице unit_management нет записей. Добавляем тестовые связи управления...")
+                
+                # Получаем ID должностей руководителей для создания связей
+                cursor.execute("SELECT id, name FROM positions WHERE attribute IN ('Директор', 'Руководитель департамента')")
+                managers = cursor.fetchall()
+                
+                # Получаем департаменты
+                cursor.execute("SELECT id, name FROM divisions")
+                divisions = cursor.fetchall()
+                
+                # Получаем отделы
+                cursor.execute("SELECT id, name, division_id FROM sections")
+                sections = cursor.fetchall()
+                
+                # Создаем связи управления
+                for manager_id, manager_name in managers:
+                    # Если это генеральный директор - управляет всеми департаментами
+                    if "Генеральный" in manager_name:
+                        for div_id, div_name in divisions:
+                            cursor.execute("""
+                            INSERT INTO unit_management 
+                            (position_id, managed_type, managed_id, description)
+                            VALUES (?, ?, ?, ?)
+                            """, (manager_id, "division", div_id, f"Управление {div_name}"))
+                    
+                    # Если это руководитель департамента - управляет своим департаментом и его отделами
+                    elif "департамента" in manager_name.lower():
+                        # Пытаемся найти подходящий департамент по имени
+                        for div_id, div_name in divisions:
+                            if div_name.lower() in manager_name.lower() or manager_name.lower() in div_name.lower():
+                                cursor.execute("""
+                                INSERT INTO unit_management 
+                                (position_id, managed_type, managed_id, description)
+                                VALUES (?, ?, ?, ?)
+                                """, (manager_id, "division", div_id, f"Управление {div_name}"))
+                                
+                                # Также управляет отделами своего департамента
+                                for sec_id, sec_name, sec_div_id in sections:
+                                    if sec_div_id == div_id:
+                                        cursor.execute("""
+                                        INSERT INTO unit_management 
+                                        (position_id, managed_type, managed_id, description)
+                                        VALUES (?, ?, ?, ?)
+                                        """, (manager_id, "section", sec_id, f"Управление {sec_name}"))
+                
+                # Руководители отделов управляют своими отделами
+                cursor.execute("SELECT id, name FROM positions WHERE attribute = 'Руководитель отдела'")
+                section_managers = cursor.fetchall()
+                
+                for manager_id, manager_name in section_managers:
+                    for sec_id, sec_name, sec_div_id in sections:
+                        if sec_name.lower() in manager_name.lower() or manager_name.lower() in sec_name.lower():
+                            cursor.execute("""
+                            INSERT INTO unit_management 
+                            (position_id, managed_type, managed_id, description)
+                            VALUES (?, ?, ?, ?)
+                            """, (manager_id, "section", sec_id, f"Управление {sec_name}"))
+                
+                conn.commit()
+                print("Тестовые связи управления добавлены!")
         
         print("\nПроверка и исправление таблиц завершены. База данных обновлена.")
     except sqlite3.Error as e:

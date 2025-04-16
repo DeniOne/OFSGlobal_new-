@@ -9,7 +9,7 @@ from typing import Dict, List, Tuple, Optional
 DB_PARAMS = {
     'dbname': 'ofs_db_new',
     'user': 'postgres',
-    'password': 'QAZwsxr$t5',
+    'password': '111',
     'host': 'localhost'
 }
 

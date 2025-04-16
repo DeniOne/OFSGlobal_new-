@@ -18,7 +18,7 @@
           DIRECTOR = "Директор"
           DEPARTMENT_HEAD = "Руководитель департамента"
           SECTION_HEAD = "Руководитель отдела"
-          ELEMENT = "Элемент"
+          ELEMENT = "Специалист"
       ```
 *   **Обновить `POSITION_SCHEMA`:**
     *   Добавь колонку `attribute TEXT NOT NULL`.

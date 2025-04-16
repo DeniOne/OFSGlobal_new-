@@ -5,12 +5,15 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 from typing import TYPE_CHECKING
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.db.base_class import Base
 
 if TYPE_CHECKING:
     from .organization import Organization # noqa
     from .division import Division # noqa
+    from .staff_function import StaffFunction # noqa
+    from .staff_location import StaffLocation # noqa
     
 class Staff(Base):
     """
@@ -33,11 +36,18 @@ class Staff(Base):
     division_id = Column(Integer, ForeignKey("divisions.id", ondelete="SET NULL"), nullable=True, index=True, comment="ID основного подразделения")
     location_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True, comment="ID локации (физического местонахождения)")
     
+    # Файлы
+    photo_path = Column(String(255), nullable=True, comment="Путь к фотографии сотрудника")
+    document_paths = Column(JSONB, nullable=True, server_default='{}', comment="JSON с путями к документам и их типами")
+    
     # Служебная информация
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     
-    # Отношения - УДАЛЕНЫ
+    # Отношения
+    staff_functions = relationship("StaffFunction", back_populates="staff", cascade="all, delete-orphan")
+    staff_locations = relationship("StaffLocation", back_populates="staff", cascade="all, delete-orphan")
+    staff_positions = relationship("StaffPosition", back_populates="staff", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Staff {self.email}>"

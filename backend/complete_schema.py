@@ -266,6 +266,34 @@ CREATE INDEX IF NOT EXISTS idx_position_functions_position_id ON position_functi
 CREATE INDEX IF NOT EXISTS idx_position_functions_function_id ON position_functions(function_id);
 """
 
+# Схема для функциональных назначений
+FUNCTIONAL_ASSIGNMENTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS functional_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    position_id INTEGER NOT NULL,
+    function_id INTEGER NOT NULL,
+    percentage INTEGER DEFAULT 100,
+    is_primary BOOLEAN DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
+    FOREIGN KEY (function_id) REFERENCES functions(id) ON DELETE CASCADE
+);
+
+-- Триггер для автоматического обновления даты изменения
+CREATE TRIGGER IF NOT EXISTS update_functional_assignments_timestamp 
+AFTER UPDATE ON functional_assignments
+FOR EACH ROW
+BEGIN
+    UPDATE functional_assignments SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
+-- Индексы для оптимизации запросов
+CREATE INDEX IF NOT EXISTS idx_functional_assignments_position_id ON functional_assignments(position_id);
+CREATE INDEX IF NOT EXISTS idx_functional_assignments_function_id ON functional_assignments(function_id);
+CREATE INDEX IF NOT EXISTS idx_functional_assignments_is_primary ON functional_assignments(is_primary);
+"""
+
 # Схема для таблицы сотрудников
 STAFF_SCHEMA = """
 CREATE TABLE IF NOT EXISTS staff (
@@ -478,6 +506,7 @@ ALL_SCHEMAS = [
     SECTION_FUNCTION_SCHEMA,
     POSITION_SCHEMA,
     POSITION_FUNCTIONS_SCHEMA,
+    FUNCTIONAL_ASSIGNMENTS_SCHEMA,
     STAFF_SCHEMA,
     STAFF_POSITION_SCHEMA,
     STAFF_LOCATION_SCHEMA,

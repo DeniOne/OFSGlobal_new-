@@ -2,9 +2,13 @@ from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.sql.sqltypes import TIMESTAMP
+from typing import TYPE_CHECKING
 
 from app.db.base_class import Base
 
+if TYPE_CHECKING:
+    from .staff_function import StaffFunction # noqa
+    from .value_function import ValueFunction # noqa
 
 class Function(Base):
     """
@@ -26,7 +30,9 @@ class Function(Base):
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     
-    # Отношения - УДАЛЕНЫ
+    # Отношения
+    value_functions = relationship("ValueFunction", back_populates="function", cascade="all, delete-orphan")
+    staff_functions = relationship("StaffFunction", back_populates="function", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Function {self.name}>" 

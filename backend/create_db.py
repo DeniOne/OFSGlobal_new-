@@ -390,6 +390,32 @@ SCHEMAS = {
     CREATE INDEX IF NOT EXISTS idx_staff_functions_dates ON staff_functions(date_from, date_to);
     """,
 
+    "functional_assignments": """
+    CREATE TABLE functional_assignments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        position_id INTEGER NOT NULL,
+        function_id INTEGER NOT NULL,
+        percentage INTEGER DEFAULT 100,
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
+        FOREIGN KEY (function_id) REFERENCES functions(id) ON DELETE CASCADE
+    );
+
+    -- Триггер для автоматического обновления даты изменения
+    CREATE TRIGGER IF NOT EXISTS update_functional_assignment_timestamp 
+    AFTER UPDATE ON functional_assignments
+    FOR EACH ROW
+    BEGIN
+        UPDATE functional_assignments SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+    END;
+
+    -- Индексы для оптимизации запросов
+    CREATE INDEX IF NOT EXISTS idx_functional_assignments_position_id ON functional_assignments(position_id);
+    CREATE INDEX IF NOT EXISTS idx_functional_assignments_function_id ON functional_assignments(function_id);
+    """,
+
     "functional_relations": """
     CREATE TABLE functional_relations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

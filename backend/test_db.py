@@ -14,7 +14,7 @@ class TestOrg(Base):
     name = Column(String)
 
 # Подключаемся к базе
-engine = create_engine("postgresql://postgres:QAZwsxr$t5@localhost/ofs_db_new")
+engine = create_engine("postgresql://postgres:111@localhost/ofs_db_new")
 
 try:
     # Создаем таблицы

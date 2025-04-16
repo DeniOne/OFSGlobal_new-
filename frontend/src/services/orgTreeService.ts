@@ -58,7 +58,7 @@ const orgTreeService = {
    */
   async getOrgTree(params: OrgTreeParams = {}): Promise<OrgTreeResponse> {
     try {
-      const response = await api.get('/org-tree/', { params });
+      const response = await api.get('/org-structure/hierarchy-flow', { params });
       return response.data;
     } catch (error) {
       console.error('Ошибка при получении дерева организационной структуры:', error);

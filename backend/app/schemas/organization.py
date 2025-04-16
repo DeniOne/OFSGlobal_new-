@@ -3,6 +3,7 @@
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, ConfigDict
 from enum import Enum
+from datetime import datetime
 
 
 class OrgType(str, Enum):
@@ -25,7 +26,7 @@ class OrganizationBase(BaseModel):
     inn: Optional[str] = None
     kpp: Optional[str] = None
     ckp: Optional[str] = None
-    is_active: Optional[bool] = True
+    is_active: bool = True
 
 
 # Схема для создания организации
@@ -51,6 +52,8 @@ class OrganizationUpdate(BaseModel):
 # Схема для отображения в API
 class Organization(OrganizationBase):
     id: int
+    created_at: datetime
+    updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -62,4 +65,13 @@ class OrganizationWithChildren(Organization):
 
 # Свойства для организации в БД
 class OrganizationInDB(Organization):
-    pass 
+    pass
+
+
+# Новая простая модель для информации о локации (для dropdown)
+class LocationInfo(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True  # Замена orm_mode=True для Pydantic v2 

@@ -181,29 +181,26 @@ const staffService = {
    * @param positionIds массив ID должностей
    */
   async getStaffForOrgChart(positionIds: number[]): Promise<Record<number, StaffMember[]>> {
-    try {
-      // Если API поддерживает множественные запросы - используем его
-      const { data } = await api.post('/staff/by-positions', { position_ids: positionIds });
-      return data;
-    } catch (error) {
-      // Если API не поддерживает множественные запросы, сделаем запросы по одному
-      console.warn('Используем резервный метод загрузки сотрудников по должностям', error);
-      
-      const staffByPosition: Record<number, StaffMember[]> = {};
-      await Promise.all(
-        positionIds.map(async (posId) => {
-          try {
-            const staff = await this.getStaffByPosition(posId);
-            staffByPosition[posId] = staff;
-          } catch (err) {
-            console.error(`Ошибка при загрузке сотрудников для должности ${posId}:`, err);
-            staffByPosition[posId] = []; // Пустой массив для должностей без сотрудников
-          }
-        })
-      );
-      
-      return staffByPosition;
-    }
+    // Сразу используем более надежный метод - отдельные запросы по одной должности
+    console.warn('Загрузка сотрудников для должностей через индивидуальные запросы');
+    
+    const staffByPosition: Record<number, StaffMember[]> = {};
+    
+    // Создаем массив промисов для загрузки сотрудников по каждой должности
+    const promises = positionIds.map(async (posId) => {
+      try {
+        const staff = await this.getStaffByPosition(posId);
+        staffByPosition[posId] = staff;
+      } catch (err) {
+        console.error(`Ошибка при загрузке сотрудников для должности ${posId}:`, err);
+        staffByPosition[posId] = []; // Пустой массив для должностей без сотрудников
+      }
+    });
+    
+    // Ждем завершения всех запросов
+    await Promise.all(promises);
+    
+    return staffByPosition;
   }
 };
 
