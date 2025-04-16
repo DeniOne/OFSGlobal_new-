@@ -35,13 +35,24 @@ class Settings(BaseSettings):
             return None
         return v
 
-    # Настройки SQLite вместо PostgreSQL
-    SQLALCHEMY_DATABASE_URI: Optional[str] = "sqlite:///./ofs_app.db"
+    # Настройки PostgreSQL вместо SQLite
+    POSTGRES_SERVER: str = os.getenv("DB_HOST", "localhost")
+    POSTGRES_USER: str = os.getenv("DB_USER", "postgres")
+    POSTGRES_PASSWORD: str = os.getenv("DB_PASSWORD", "111")
+    POSTGRES_DB: str = os.getenv("DB_NAME", "ofs_db_new")
+    POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
+    
+    # Используем SQLite для тестирования
+    USE_SQLITE: bool = os.getenv("USE_SQLITE", "1") == "1"
+    SQLITE_DB_PATH: str = os.path.join(os.getcwd(), "full_api.db")
+    
+    # Формируем URL для SQLAlchemy из компонентов
+    SQLALCHEMY_DATABASE_URI: str = f"postgresql://{os.getenv('DB_USER', 'postgres')}:{quote_plus(os.getenv('DB_PASSWORD', '111'))}@{os.getenv('DB_HOST', 'localhost')}:{os.getenv('POSTGRES_PORT', '5432')}/{os.getenv('DB_NAME', 'ofs_db_new')}"
 
     @property
     def SYNC_SQLALCHEMY_DATABASE_URI(self) -> str:
         """Возвращает URL для синхронного подключения к базе данных"""
-        return "sqlite:///./ofs_app.db"
+        return self.SQLALCHEMY_DATABASE_URI
 
     SMTP_TLS: bool = True
     SMTP_PORT: Optional[int] = None
